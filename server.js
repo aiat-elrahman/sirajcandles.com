@@ -1,23 +1,35 @@
-require('dotenv').config(); // <-- MUST be first
-const express = require('express');
-const cors = require('cors');
-const mongoose = require('mongoose');
+import express from "express";
+import mongoose from "mongoose";
+import dotenv from "dotenv";
+import cors from "cors";
+import path from "path";
+import { fileURLToPath } from "url";
 
-console.log('Mongo URI is:', process.env.MONGO_URI); // <-- debug lin
-app.use(cors());
+import productRoutes from "./routes/productRoutes.js";
+import bundleRoutes from "./routes/bundleRoutes.js";
+
+dotenv.config();
+
 const app = express();
+
+// Middleware
+app.use(cors());
 app.use(express.json());
 
-// Connect to MongoDB
-mongoose.connect(process.env.MONGO_URI)
-  .then(() => console.log('MongoDB connected'))
-  .catch(err => console.error('MongoDB connection error:', err));
+// Serve static uploads (images)
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
-app.get('/', (req, res) => {
-  res.send('SirajCandles backend is running...');
-});
+// Routes
+app.use("/api/products", productRoutes);
+app.use("/api/bundles", bundleRoutes);
 
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
-const productRoutes = require('./routes/products');
-app.use('/api/products', productRoutes);
+// Database Connection
+mongoose
+  .connect(process.env.MONGO_URI)
+  .then(() => {
+    console.log("✅ MongoDB Connected");
+    app.listen(5000, () => console.log("🚀 Server running on port 5000"));
+  })
+  .catch((err) => console.error("❌ MongoDB connection error:", err));
