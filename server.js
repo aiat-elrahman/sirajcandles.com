@@ -33,3 +33,13 @@ mongoose.connect(process.env.MONGO_URI)
     app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
   })
   .catch((err) => console.error("❌ MongoDB connection error:", err));
+import cors from "cors";
+
+app.use(cors({
+  origin: [
+    "https://siraj-frontend.onrender.com", // your frontend on Render
+    "http://localhost:5500",                // for local testing (optional)
+  ],
+  methods: ["GET", "POST", "PUT", "DELETE"],
+  credentials: true,
+}));
