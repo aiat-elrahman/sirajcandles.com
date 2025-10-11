@@ -46,17 +46,6 @@ app.use(
 // Middleware
 app.use(express.json());
 
-// =========================================================================
-// 🔥 FIX APPLIED: FRONTEND STATIC FILE SERVING (MIME Type Fix)
-// 
-// This block serves your HTML, CSS, and JS files and sets the correct 
-// MIME types (e.g., 'text/css' for stylesheets).
-// 
-// *** CRUCIAL CHANGE: Now points to 'siraj-frontend' as per your confirmation.
-// =========================================================================
-const FRONTEND_BUILD_PATH = path.join(__dirname, 'siraj-frontend'); // <-- CHANGED HERE
-app.use(express.static(FRONTEND_BUILD_PATH));
-
 // =============================
 // 📂 Serve Static Uploads (Backend Images)
 // =============================
@@ -69,19 +58,22 @@ app.use("/api/products", productRoutes);
 app.use("/api/bundles", bundleRoutes);
 
 // =============================
-// ❤️ Health Check Route & Frontend Fallback
+// ❤️ Health Check Route (Root Path)
 // =============================
-// Serve the main index.html for all non-API and non-static file requests (SPA fallback)
-app.get("*", (req, res) => {
-    // Keep the root route for health check, but serve index.html otherwise
-    if (req.path === '/') {
-        res.send("Siraj backend is running 🚀");
-    } else {
-        // This serves the frontend index.html for client-side routing
-        // This assumes index.html is directly inside the 'siraj-frontend' folder
-        res.sendFile(path.join(FRONTEND_BUILD_PATH, 'index.html'));
-    }
+app.get("/", (req, res) => {
+    res.send("Siraj backend is running 🚀");
 });
+
+
+// =========================================================================
+// 🔥 FIX APPLIED: FRONTEND STATIC FILE SERVING (MIME Type Fix & Route Fix)
+// 
+// This block serves your HTML, CSS, and JS files. It must be AFTER 
+// your specific API routes to ensure those are prioritized.
+// *** Points to 'siraj-frontend' based on your folder structure.
+// =========================================================================
+const FRONTEND_BUILD_PATH = path.join(__dirname, 'siraj-frontend');
+app.use(express.static(FRONTEND_BUILD_PATH));
 
 
 // =============================
