@@ -5,7 +5,7 @@ import cors from "cors";
 import path from "path";
 import { fileURLToPath } from "url";
 
-// Import your route files
+// Import 
 import productRoutes from "./routes/productRoutes.js";
 import bundleRoutes from "./routes/bundleRoutes.js";
 
@@ -14,18 +14,16 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// =============================
-// ⚙️ PATH SETUP (Required for ES Modules)
-// =============================
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// =============================
-// 🧩 CORS Configuration (Confirmed)
-// =============================
+
+// 🧩 CORS Configuration 
+
 const allowedOrigins = [
-  "https://siraj-frontend.onrender.com", // ✅ Your Deployed Render Frontend
-  "http://localhost:5173", // For local development testing
+  "https://siraj-frontend.onrender.com", 
+  "http://localhost:5173", 
 ];
 
 app.use(
@@ -46,42 +44,31 @@ app.use(
 // Middleware
 app.use(express.json());
 
-// =============================
-// 📂 Serve Static Uploads (Backend Images)
-// =============================
+
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
-// =============================
-// 🛠 API Routes
-// =============================
+
+// API Routes
+
 app.use("/api/products", productRoutes);
 app.use("/api/bundles", bundleRoutes);
 
-// =============================
-// ❤️ Health Check Route (Root Path)
-// =============================
+// route path
 app.get("/", (req, res) => {
     res.send("Siraj backend is running 🚀");
 });
 
 
-// =========================================================================
-// 🔥 FIX APPLIED: FRONTEND STATIC FILE SERVING (MIME Type Fix & Route Fix)
-// 
-// This block serves your HTML, CSS, and JS files. It must be AFTER 
-// your specific API routes to ensure those are prioritized.
-// *** Points to 'siraj-frontend' based on your folder structure.
-// =========================================================================
+
 const FRONTEND_BUILD_PATH = path.join(__dirname, 'siraj-frontend');
 app.use(express.static(FRONTEND_BUILD_PATH));
 
 
-// =============================
-// ⚙️ Database Connection
-// =============================
+
+//Database 
 mongoose
   .connect(process.env.MONGO_URI, {
-    // Options removed as per Mongoose best practices
+    
   })
   .then(() => {
     console.log("✅ MongoDB Connected");
