@@ -15,8 +15,13 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 // =============================
+// ⚙️ PATH SETUP (Required for ES Modules)
+// =============================
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// =============================
 // 🧩 CORS Configuration (Confirmed)
-// This list explicitly allows your deployed frontend URL.
 // =============================
 const allowedOrigins = [
   "https://siraj-frontend.onrender.com", // ✅ Your Deployed Render Frontend
@@ -26,12 +31,9 @@ const allowedOrigins = [
 app.use(
   cors({
     origin: function (origin, callback) {
-      // Allow requests with no origin (like health checks or cURL)
-      // or if the origin is in our allowed list
       if (!origin || allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
-        // If an unauthorized domain tries to access, log the error
         console.error(`❌ CORS Error: Origin ${origin} is not allowed.`);
         callback(new Error("Not allowed by CORS"));
       }
@@ -44,36 +46,50 @@ app.use(
 // Middleware
 app.use(express.json());
 
+// =========================================================================
+// 🔥 FIX APPLIED: FRONTEND STATIC FILE SERVING (MIME Type Fix)
+// 
+// This block serves your HTML, CSS, and JS files and sets the correct 
+// MIME types (e.g., 'text/css' for stylesheets).
+// 
+// *** CRUCIAL CHANGE: Now points to 'siraj-frontend' as per your confirmation.
+// =========================================================================
+const FRONTEND_BUILD_PATH = path.join(__dirname, 'siraj-frontend'); // <-- CHANGED HERE
+app.use(express.static(FRONTEND_BUILD_PATH));
+
 // =============================
-// 📂 Serve Static Uploads
+// 📂 Serve Static Uploads (Backend Images)
 // =============================
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // =============================
 // 🛠 API Routes
 // =============================
-// Note: Frontend calls will look like: https://siraj-backend.onrender.com/api/products/...
 app.use("/api/products", productRoutes);
 app.use("/api/bundles", bundleRoutes);
 
 // =============================
-// ❤️ Health Check Route
+// ❤️ Health Check Route & Frontend Fallback
 // =============================
-app.get("/", (req, res) => {
-  res.send("Siraj backend is running 🚀");
+// Serve the main index.html for all non-API and non-static file requests (SPA fallback)
+app.get("*", (req, res) => {
+    // Keep the root route for health check, but serve index.html otherwise
+    if (req.path === '/') {
+        res.send("Siraj backend is running 🚀");
+    } else {
+        // This serves the frontend index.html for client-side routing
+        // This assumes index.html is directly inside the 'siraj-frontend' folder
+        res.sendFile(path.join(FRONTEND_BUILD_PATH, 'index.html'));
+    }
 });
+
 
 // =============================
 // ⚙️ Database Connection
 // =============================
 mongoose
   .connect(process.env.MONGO_URI, {
-    // The following options are deprecated in recent Mongoose versions,
-    // but often included for compatibility.
-    // useNewUrlParser: true,
-    // useUnifiedTopology: true,
+    // Options removed as per Mongoose best practices
   })
   .then(() => {
     console.log("✅ MongoDB Connected");
