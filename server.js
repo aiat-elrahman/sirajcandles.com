@@ -5,6 +5,7 @@ import cors from "cors";
 import path from "path";
 import { fileURLToPath } from "url";
 
+// Import your route files
 import productRoutes from "./routes/productRoutes.js";
 import bundleRoutes from "./routes/bundleRoutes.js";
 
@@ -14,19 +15,24 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 // =============================
-// 🧩 CORS Configuration
+// 🧩 CORS Configuration (Confirmed)
+// This list explicitly allows your deployed frontend URL.
 // =============================
 const allowedOrigins = [
-  "https://siraj-frontend.onrender.com", // ✅ your Render frontend
-  "http://localhost:5173", // for local testing (optional)
+  "https://siraj-frontend.onrender.com", // ✅ Your Deployed Render Frontend
+  "http://localhost:5173", // For local development testing
 ];
 
 app.use(
   cors({
     origin: function (origin, callback) {
+      // Allow requests with no origin (like health checks or cURL)
+      // or if the origin is in our allowed list
       if (!origin || allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
+        // If an unauthorized domain tries to access, log the error
+        console.error(`❌ CORS Error: Origin ${origin} is not allowed.`);
         callback(new Error("Not allowed by CORS"));
       }
     },
@@ -48,6 +54,7 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 // =============================
 // 🛠 API Routes
 // =============================
+// Note: Frontend calls will look like: https://siraj-backend.onrender.com/api/products/...
 app.use("/api/products", productRoutes);
 app.use("/api/bundles", bundleRoutes);
 
@@ -63,8 +70,10 @@ app.get("/", (req, res) => {
 // =============================
 mongoose
   .connect(process.env.MONGO_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
+    // The following options are deprecated in recent Mongoose versions,
+    // but often included for compatibility.
+    // useNewUrlParser: true,
+    // useUnifiedTopology: true,
   })
   .then(() => {
     console.log("✅ MongoDB Connected");
