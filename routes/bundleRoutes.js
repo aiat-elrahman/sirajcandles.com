@@ -4,7 +4,7 @@ import multer from "multer";
 
 const router = express.Router();
 
-// ----------------- MULTER SETUP -----------------
+// multer? don't understand :()
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, "uploads/bundles/");
@@ -15,7 +15,7 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-// ----------------- GET ALL BUNDLES with Search, Pagination -----------------
+// search & pagination & sorting
 router.get("/", async (req, res) => {
   try {
     const { page = 1, limit = 10, search = "", sort } = req.query;
@@ -40,7 +40,7 @@ router.get("/", async (req, res) => {
   }
 });
 
-// ----------------- GET BUNDLE BY ID -----------------
+//  GET  BY ID 
 router.get("/:id", async (req, res) => {
   try {
     const bundle = await Bundle.findById(req.params.id).populate("products");
@@ -51,7 +51,7 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-// ----------------- ADD NEW BUNDLE -----------------
+// ADD NEW  
 router.post("/", upload.single("image"), async (req, res) => {
   try {
     const { name, description, price, products, status, featured } = req.body;
@@ -74,7 +74,7 @@ router.post("/", upload.single("image"), async (req, res) => {
   }
 });
 
-// ----------------- UPDATE BUNDLE -----------------
+//  UPDATE BUNDLE 
 router.put("/:id", upload.single("image"), async (req, res) => {
   try {
     const { name, description, price, products, status, featured } = req.body;
@@ -93,7 +93,7 @@ router.put("/:id", upload.single("image"), async (req, res) => {
   }
 });
 
-// ----------------- DELETE BUNDLE -----------------
+// DELETE BUNDLE 
 router.delete("/:id", async (req, res) => {
   try {
     const deletedBundle = await Bundle.findByIdAndDelete(req.params.id);
