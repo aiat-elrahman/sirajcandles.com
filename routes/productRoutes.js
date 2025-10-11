@@ -4,10 +4,10 @@ import multer from "multer";
 
 const router = express.Router();
 
-// ----------------- MULTER SETUP FOR IMAGE UPLOAD -----------------
+// multer again
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, "uploads/products/"); // Save in uploads/products
+    cb(null, "uploads/products/"); 
   },
   filename: (req, file, cb) => {
     cb(null, Date.now() + "-" + file.originalname);
@@ -15,7 +15,7 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-// ----------------- GET ALL PRODUCTS with Search, Filter, Pagination -----------------
+//search & pagination & sorting
 router.get("/", async (req, res) => {
   try {
     const { page = 1, limit = 10, search = "", category, minPrice, maxPrice, sort } = req.query;
@@ -27,7 +27,7 @@ router.get("/", async (req, res) => {
       query.name = { $regex: search, $options: "i" };
     }
 
-    // Category filter
+    // filter
     if (category) {
       query.category = category;
     }
@@ -56,7 +56,7 @@ router.get("/", async (req, res) => {
   }
 });
 
-// ----------------- GET PRODUCT BY ID -----------------
+// ID
 router.get("/:id", async (req, res) => {
   try {
     const product = await Product.findById(req.params.id);
@@ -67,7 +67,7 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-// ----------------- ADD NEW PRODUCT -----------------
+//  ADD NEW products
 router.post("/", upload.array("images", 5), async (req, res) => {
   try {
     const { name, description, price, category, stock, status, featured } = req.body;
@@ -91,7 +91,7 @@ router.post("/", upload.array("images", 5), async (req, res) => {
   }
 });
 
-// ----------------- UPDATE PRODUCT -----------------
+// update product
 router.put("/:id", upload.array("images", 5), async (req, res) => {
   try {
     const { name, description, price, category, stock, status, featured } = req.body;
@@ -110,7 +110,7 @@ router.put("/:id", upload.array("images", 5), async (req, res) => {
   }
 });
 
-// ----------------- DELETE PRODUCT -----------------
+//  DELETE PRODUCT 
 router.delete("/:id", async (req, res) => {
   try {
     const deletedProduct = await Product.findByIdAndDelete(req.params.id);
