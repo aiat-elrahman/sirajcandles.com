@@ -22,8 +22,8 @@ const __dirname = path.dirname(__filename);
 // 🧩 CORS Configuration 
 
 const allowedOrigins = [
-  "https://siraj-frontend.onrender.com", 
-  "http://localhost:5173", 
+  "https://siraj-candles-website.netlify.app", 
+  "http://localhost:5173", 
 ];
 
 app.use(
