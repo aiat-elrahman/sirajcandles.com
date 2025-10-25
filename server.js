@@ -7,6 +7,7 @@ import { fileURLToPath } from "url";
 
 // Import the router using the correct, lowercase filename
 import productRoutes from "./routes/productRoutes.js"; 
+import orderRoutes from "./routes/orderRoutes.js";
 
 dotenv.config();
 
@@ -21,6 +22,7 @@ const __dirname = path.dirname(__filename);
 const allowedOrigins = [
   "https://siraj-candles-website.netlify.app", 
   "http://localhost:5173", 
+  "http://127.0.0.1:5500" 
 ];
 
 app.use(
@@ -48,15 +50,11 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 // API Routes
 // Note: Only using productRoutes now, as it handles both Products and Bundles
 app.use("/api/products", productRoutes);
-
+app.use("/api/orders", orderRoutes);
 // route path
 app.get("/", (req, res) => {
     res.send("Siraj backend is running 🚀");
 });
-
-// Serve frontend build static assets (assuming 'siraj-frontend' is at the root)
-const FRONTEND_BUILD_PATH = path.join(__dirname, 'siraj-frontend');
-app.use(express.static(FRONTEND_BUILD_PATH));
 
 // Database 
 mongoose
