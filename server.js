@@ -44,8 +44,6 @@ app.use(
 // Middleware
 app.use(express.json());
 
-// Serving static files (Kept for compatibility, though Cloudinary is used for products)
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // API Routes
 // Note: Only using productRoutes now, as it handles both Products and Bundles
