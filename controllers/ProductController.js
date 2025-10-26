@@ -4,8 +4,8 @@ import DatauriParser from 'datauri/parser.js';
 import path from 'path';
 
 // --- CONFIGURE CLOUDINARY ---
-cloudinary.v2.config({ // Use cloudinary.v2.config
-    cloud_name: process.env.CLOUDINARY_CLOUD_NAME, // Removed default values
+cloudinary.v2.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
     api_key: process.env.CLOUDINARY_API_KEY,
     api_secret: process.env.CLOUDINARY_API_SECRET
 });
@@ -17,11 +17,11 @@ const formatBufferToDataUri = file => parser.format(path.extname(file.originalna
 const uploadToCloudinary = async (file) => {
     try {
         const dataUri = formatBufferToDataUri(file);
-        const uploadResult = await cloudinary.v2.uploader.upload(dataUri.content, { // Use cloudinary.v2.uploader
+        const uploadResult = await cloudinary.v2.uploader.upload(dataUri.content, {
             folder: 'siraj-ecommerce-products',
             resource_type: 'auto'
         });
-        return uploadResult.secure_url; // Returns the public URL
+        return uploadResult.secure_url;
     } catch (error) {
         console.error('Cloudinary Upload Error:', error);
         throw new Error('Image upload failed.');
@@ -32,15 +32,12 @@ const uploadToCloudinary = async (file) => {
 
 /**
  * Endpoint: POST /api/products (Admin panel submission)
- * Handles the creation of a new product (Single or Bundle)
  */
 export const createProduct = async (req, res) => {
     try {
-        // 1. Validation and Data Parsing
         if (!req.files || req.files.length === 0) {
             return res.status(400).json({ message: 'Product requires at least one image.' });
         }
-        // Use req.body.productData (matches admin panel)
         if (!req.body.productData) {
             return res.status(400).json({ message: 'Product data (text fields) is missing.' });
         }
@@ -48,39 +45,32 @@ export const createProduct = async (req, res) => {
         const productData = JSON.parse(req.body.productData);
         const { productType } = productData;
 
-        // 2. Upload images to Cloudinary concurrently
         const uploadPromises = req.files.map(file => uploadToCloudinary(file));
         const imagePaths = await Promise.all(uploadPromises);
 
-        // 3. Prepare the final document for MongoDB
         let finalProductDoc = {
             productType: productType,
             imagePaths: imagePaths,
             category: productData.category,
-
-            // FIX: Add 'name' and 'price' required by Mongoose model
             name: productType === 'Bundle' ? productData.bundleName : productData.name_en,
-            price: productData.price_egp, // Copy value from price_egp
-
-            // Keep the specific fields
+            price: productData.price_egp,
             price_egp: productData.price_egp,
             stock: productData.stock,
             status: productData.status,
             featured: productData.featured || false,
         };
 
-        // Add type-specific fields
         if (productType === 'Bundle') {
             Object.assign(finalProductDoc, {
-                name_en: productData.bundleName, // Keep name_en for consistency if needed elsewhere
+                name_en: productData.bundleName,
                 description_en: productData.bundleDescription,
                 bundleName: productData.bundleName,
                 bundleDescription: productData.bundleDescription,
                 bundleItems: productData.bundleItems,
             });
-        } else { // Single Product
+        } else {
             Object.assign(finalProductDoc, {
-                name_en: productData.name_en, // Keep name_en
+                name_en: productData.name_en,
                 description_en: productData.description_en,
                 scents: productData.scents,
                 size: productData.size,
@@ -91,65 +81,57 @@ export const createProduct = async (req, res) => {
             });
         }
 
-        // 4. Save the product to MongoDB
         const newProduct = await Product.create(finalProductDoc);
 
         res.status(201).json({
             success: true,
             message: 'Product created successfully!',
-            product: newProduct
+            product: newProduct // Send back the created product
         });
 
     } catch (error) {
-        // Log the detailed validation error if it occurs
         console.error('Error creating product:', error);
         res.status(500).json({
             message: 'Server error during product creation.',
-            // Include the specific validation error message from Mongoose
             error: error.message
         });
     }
 };
 
 /**
- * Endpoint: GET /api/products (Frontend list)
- * Retrieves products based on query parameters
+ * Endpoint: GET /api/products (Frontend list & Admin list)
  */
 export const getAllProducts = async (req, res) => {
     try {
-        const { page = 1, limit = 12, category, productType, sort, order = 'asc', search, exclude_id, isBestSeller } = req.query;
-        const query = { status: 'Active' };
+        // Added status filter for admin (optional)
+        const { page = 1, limit = 12, category, productType, sort, order = 'asc', search, exclude_id, isBestSeller, status } = req.query;
 
-        // Build Mongoose Query
+        // Default to Active for frontend, allow filtering by status for admin
+        const query = status ? { status } : { status: 'Active' };
+
         if (category) query.category = category;
         if (productType) query.productType = productType;
-
         if (search) {
-            query.$or = [
+             query.$or = [
+                { name: { $regex: search, $options: 'i' } }, // Search generic name
                 { name_en: { $regex: search, $options: 'i' } },
-                { bundleName: { $regex: search, $options: 'i' } }, // Also search bundle names if applicable
+                { bundleName: { $regex: search, $options: 'i' } },
                 { description_en: { $regex: search, $options: 'i' } }
             ];
         }
         if (exclude_id) query._id = { $ne: exclude_id };
         if (isBestSeller === 'true') query.featured = true;
 
-        // Sorting
-        // Use 'price_egp' for price sorting as it exists on both types
         const sortCriteria = {};
-        if (sort === 'price') {
+         if (sort === 'price') {
             sortCriteria['price_egp'] = order === 'desc' ? -1 : 1;
         } else if (sort === 'name') {
-             // Sort primarily by name_en, fallback to bundleName if name_en is missing (for bundles)
-             sortCriteria['name_en'] = order === 'desc' ? -1 : 1;
-             sortCriteria['bundleName'] = order === 'desc' ? -1 : 1;
+             sortCriteria['name'] = order === 'desc' ? -1 : 1; // Use generic name for sorting
         } else if (sort === 'newest' || !sort) {
-            sortCriteria['createdAt'] = -1; // Default sort by newest
+            sortCriteria['createdAt'] = -1;
         } else if (sort) {
-             // Allow sorting by other fields if specified (like name_en directly)
              sortCriteria[sort] = order === 'desc' ? -1 : 1;
         }
-
 
         const options = {
             limit: parseInt(limit),
@@ -160,17 +142,12 @@ export const getAllProducts = async (req, res) => {
         const products = await Product.find(query, null, options);
         const total = await Product.countDocuments(query);
 
-        // Map data to match the FE's expected property names (for consistency)
-        // No need for extra formatting keys like 'Name (English)' if FE uses fallbacks
-        const formattedResults = products.map(p => ({
-            ...p._doc, // Include all fields directly from the database document
-        }));
-
         res.json({
             total,
             page: parseInt(page),
             limit: parseInt(limit),
-            results: formattedResults, // Send the direct results
+            // Send raw results, frontend/admin handle display
+            results: products.map(p => ({ ...p._doc })),
         });
 
     } catch (error) {
@@ -179,26 +156,155 @@ export const getAllProducts = async (req, res) => {
     }
 };
 
-
 /**
- * Endpoint: GET /api/products/:id (Frontend detail page)
- * Retrieves a single product or bundle by ID
+ * Endpoint: GET /api/products/:id (Frontend detail & Admin Edit)
  */
 export const getProductById = async (req, res) => {
     try {
         const product = await Product.findById(req.params.id);
 
-        if (!product || product.status === 'Inactive') {
-            return res.status(404).json({ message: 'Product not found or is inactive.' });
+        // Allow fetching inactive products for admin edit
+        if (!product) {
+            return res.status(404).json({ message: 'Product not found.' });
         }
 
-        // Send the raw product data directly - Frontend handles display logic
-        res.json({
-           ...product._doc // Include all fields directly from the database document
-        });
+        res.json({ ...product._doc });
 
     } catch (error) {
         console.error('Error fetching product by ID:', error);
+         // Handle CastError if ID format is invalid
+        if (error.kind === 'ObjectId') {
+             return res.status(400).json({ message: 'Invalid product ID format.' });
+        }
         res.status(500).json({ message: 'Failed to fetch product details.' });
+    }
+};
+
+/**
+ * Endpoint: PUT /api/products/:id (Admin Edit submission)
+ * Handles updating an existing product
+ */
+export const updateProduct = async (req, res) => {
+    try {
+        const productId = req.params.id;
+        const product = await Product.findById(productId);
+
+        if (!product) {
+            return res.status(404).json({ message: 'Product not found.' });
+        }
+
+        // --- Handle Image Updates ---
+        let updatedImagePaths = product.imagePaths || []; // Start with existing images
+        // Note: Add logic here if you want to DELETE specific existing images first
+        // based on data sent from the frontend (e.g., an array of URLs to remove).
+
+        // Upload NEW images if any were provided
+        if (req.files && req.files.length > 0) {
+            const uploadPromises = req.files.map(file => uploadToCloudinary(file));
+            const newImagePaths = await Promise.all(uploadPromises);
+            updatedImagePaths = [...updatedImagePaths, ...newImagePaths]; // Combine old and new
+        }
+
+        // --- Handle Text Data Update ---
+        if (!req.body.productData) {
+            return res.status(400).json({ message: 'Product data (text fields) is missing for update.' });
+        }
+        const productData = JSON.parse(req.body.productData);
+        const { productType } = productData; // Use type from updated data
+
+        // Prepare updated fields (similar to createProduct)
+        let updateFields = {
+            productType: productType,
+            imagePaths: updatedImagePaths, // Use the potentially updated image list
+            category: productData.category,
+            name: productType === 'Bundle' ? productData.bundleName : productData.name_en,
+            price: productData.price_egp,
+            price_egp: productData.price_egp,
+            stock: productData.stock,
+            status: productData.status,
+            featured: productData.featured || false,
+        };
+
+        if (productType === 'Bundle') {
+            Object.assign(updateFields, {
+                name_en: productData.bundleName,
+                description_en: productData.bundleDescription,
+                bundleName: productData.bundleName,
+                bundleDescription: productData.bundleDescription,
+                bundleItems: productData.bundleItems,
+                 // Explicitly unset single product fields if switching type
+                $unset: { scents: "", size: "", formattedDescription: "", burnTime: "", wickType: "", coverageSpace: "" }
+            });
+        } else { // Single Product
+            Object.assign(updateFields, {
+                name_en: productData.name_en,
+                description_en: productData.description_en,
+                scents: productData.scents,
+                size: productData.size,
+                formattedDescription: productData.formattedDescription,
+                burnTime: productData.burnTime,
+                wickType: productData.wickType,
+                coverageSpace: productData.coverageSpace,
+                // Explicitly unset bundle fields if switching type
+                $unset: { bundleName: "", bundleDescription: "", bundleItems: "" }
+            });
+        }
+
+        // Perform the update in MongoDB
+        const updatedProduct = await Product.findByIdAndUpdate(
+            productId,
+            updateFields,
+            { new: true, runValidators: true } // Return the updated doc, run schema validation
+        );
+
+        res.status(200).json({
+            success: true,
+            message: 'Product updated successfully!',
+            product: updatedProduct
+        });
+
+    } catch (error) {
+        console.error('Error updating product:', error);
+        res.status(500).json({
+            message: 'Server error during product update.',
+            error: error.message
+        });
+    }
+};
+
+
+/**
+ * Endpoint: DELETE /api/products/:id (Admin Delete action)
+ * Handles deleting a product
+ */
+export const deleteProduct = async (req, res) => {
+    try {
+        const productId = req.params.id;
+        const deletedProduct = await Product.findByIdAndDelete(productId);
+
+        if (!deletedProduct) {
+            return res.status(404).json({ message: 'Product not found.' });
+        }
+
+        // Optional: Delete images from Cloudinary here if desired
+        // You would need the public_ids of the images, which are not currently stored.
+        // const imageDeletionPromises = deletedProduct.imagePaths.map(url => {
+        //    const publicId = /* Extract public_id from url */;
+        //    return cloudinary.v2.uploader.destroy(publicId);
+        // });
+        // await Promise.all(imageDeletionPromises);
+
+        res.status(200).json({
+            success: true,
+            message: 'Product deleted successfully!',
+            productId: productId // Send back ID for frontend update
+        });
+
+    } catch (error) {
+        console.error('Error deleting product:', error);
+        res.status(500).json({
+            message: 'Server error during product deletion.',
+            error: error.message
+        });
     }
 };
