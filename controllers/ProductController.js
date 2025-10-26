@@ -44,11 +44,12 @@ export const createProduct = async (req, res) => {
         if (!req.files || req.files.length === 0) {
             return res.status(400).json({ message: 'Product requires at least one image.' });
         }
-        if (!req.body.data) {
+        // CHANGE THIS LINE:
+        if (!req.body.productData) { // <--- FROM req.body.data TO req.body.productData
             return res.status(400).json({ message: 'Product data (text fields) is missing.' });
         }
 
-        const productData = JSON.parse(req.body.data);
+        const productData = JSON.parse(req.body.productData); // <--- FROM req.body.data TO req.body.productData
         const { productType } = productData;
 
         // 2. Upload images to Cloudinary concurrently
