@@ -28,6 +28,79 @@ const uploadToCloudinary = async (file) => {
     }
 };
 
+// Helper function to build product data based on category and type
+const buildProductData = (productData, productType, imagePaths) => {
+    let finalProductDoc = {
+        productType: productType,
+        imagePaths: imagePaths,
+        category: productData.category,
+        name: productType === 'Bundle' ? productData.bundleName : productData.name_en,
+        price: productData.price_egp,
+        price_egp: productData.price_egp,
+        stock: productData.stock,
+        status: productData.status,
+        featured: productData.featured || false,
+    };
+
+    if (productType === 'Bundle') {
+        // Bundle specific fields
+        Object.assign(finalProductDoc, {
+            name_en: productData.bundleName,
+            description_en: productData.bundleDescription,
+            bundleName: productData.bundleName,
+            bundleDescription: productData.bundleDescription,
+            bundleItems: productData.bundleItems,
+        });
+    } else {
+        // Single Product - include ALL possible fields, they'll be saved based on category
+        Object.assign(finalProductDoc, {
+            name_en: productData.name_en,
+            description_en: productData.description_en,
+            
+            // General fields
+            scents: productData.scents,
+            size: productData.size,
+            formattedDescription: productData.formattedDescription,
+            
+            // Selectable Options Fields
+            scentOptions: productData.scentOptions,
+            sizeOptions: productData.sizeOptions,
+            weightOptions: productData.weightOptions,
+            typeOptions: productData.typeOptions,
+            shapeOptions: productData.shapeOptions,
+            
+            // Candle & Pottery Specifications
+            burnTime: productData.burnTime,
+            wickType: productData.wickType,
+            coverageSpace: productData.coverageSpace,
+            
+            // Deodorant Specifications
+            skinType: productData.skinType,
+            keyIngredients: productData.keyIngredients,
+            
+            // Soap Specifications  
+            featureBenefit: productData.featureBenefit,
+            soapWeight: productData.soapWeight,
+            
+            // Body Oil Specifications
+            color: productData.color,
+            oilWeight: productData.oilWeight,
+            
+            // Massage Candle Specifications
+            massageWeight: productData.massageWeight,
+            
+            // Wax Burner Specifications
+            dimensions: productData.dimensions,
+            material: productData.material,
+            
+            // Fizzy Salts
+            fizzySpecs: productData.fizzySpecs,
+        });
+    }
+
+    return finalProductDoc;
+};
+
 // --- CONTROLLER FUNCTIONS ---
 
 /**
@@ -48,45 +121,13 @@ export const createProduct = async (req, res) => {
         const uploadPromises = req.files.map(file => uploadToCloudinary(file));
         const imagePaths = await Promise.all(uploadPromises);
 
-        let finalProductDoc = {
-            productType: productType,
-            imagePaths: imagePaths,
-            category: productData.category,
-            name: productType === 'Bundle' ? productData.bundleName : productData.name_en,
-            price: productData.price_egp,
-            price_egp: productData.price_egp,
-            stock: productData.stock,
-            status: productData.status,
-            featured: productData.featured || false,
-        };
-
-        if (productType === 'Bundle') {
-            Object.assign(finalProductDoc, {
-                name_en: productData.bundleName,
-                description_en: productData.bundleDescription,
-                bundleName: productData.bundleName,
-                bundleDescription: productData.bundleDescription,
-                bundleItems: productData.bundleItems,
-            });
-        } else {
-            Object.assign(finalProductDoc, {
-                name_en: productData.name_en,
-                description_en: productData.description_en,
-                scents: productData.scents,
-                size: productData.size,
-                formattedDescription: productData.formattedDescription,
-                burnTime: productData.burnTime,
-                wickType: productData.wickType,
-                coverageSpace: productData.coverageSpace,
-            });
-        }
-
+        const finalProductDoc = buildProductData(productData, productType, imagePaths);
         const newProduct = await Product.create(finalProductDoc);
 
         res.status(201).json({
             success: true,
             message: 'Product created successfully!',
-            product: newProduct // Send back the created product
+            product: newProduct
         });
 
     } catch (error) {
@@ -103,7 +144,6 @@ export const createProduct = async (req, res) => {
  */
 export const getAllProducts = async (req, res) => {
     try {
-        // Added status filter for admin (optional)
         const { page = 1, limit = 12, category, productType, sort, order = 'asc', search, exclude_id, isBestSeller, status } = req.query;
 
         // Default to Active for frontend, allow filtering by status for admin
@@ -113,7 +153,7 @@ export const getAllProducts = async (req, res) => {
         if (productType) query.productType = productType;
         if (search) {
              query.$or = [
-                { name: { $regex: search, $options: 'i' } }, // Search generic name
+                { name: { $regex: search, $options: 'i' } },
                 { name_en: { $regex: search, $options: 'i' } },
                 { bundleName: { $regex: search, $options: 'i' } },
                 { description_en: { $regex: search, $options: 'i' } }
@@ -126,7 +166,7 @@ export const getAllProducts = async (req, res) => {
          if (sort === 'price') {
             sortCriteria['price_egp'] = order === 'desc' ? -1 : 1;
         } else if (sort === 'name') {
-             sortCriteria['name'] = order === 'desc' ? -1 : 1; // Use generic name for sorting
+             sortCriteria['name'] = order === 'desc' ? -1 : 1;
         } else if (sort === 'newest' || !sort) {
             sortCriteria['createdAt'] = -1;
         } else if (sort) {
@@ -146,7 +186,6 @@ export const getAllProducts = async (req, res) => {
             total,
             page: parseInt(page),
             limit: parseInt(limit),
-            // Send raw results, frontend/admin handle display
             results: products.map(p => ({ ...p._doc })),
         });
 
@@ -163,7 +202,6 @@ export const getProductById = async (req, res) => {
     try {
         const product = await Product.findById(req.params.id);
 
-        // Allow fetching inactive products for admin edit
         if (!product) {
             return res.status(404).json({ message: 'Product not found.' });
         }
@@ -172,7 +210,6 @@ export const getProductById = async (req, res) => {
 
     } catch (error) {
         console.error('Error fetching product by ID:', error);
-         // Handle CastError if ID format is invalid
         if (error.kind === 'ObjectId') {
              return res.status(400).json({ message: 'Invalid product ID format.' });
         }
@@ -182,7 +219,6 @@ export const getProductById = async (req, res) => {
 
 /**
  * Endpoint: PUT /api/products/:id (Admin Edit submission)
- * Handles updating an existing product
  */
 export const updateProduct = async (req, res) => {
     try {
@@ -194,15 +230,12 @@ export const updateProduct = async (req, res) => {
         }
 
         // --- Handle Image Updates ---
-        let updatedImagePaths = product.imagePaths || []; // Start with existing images
-        // Note: Add logic here if you want to DELETE specific existing images first
-        // based on data sent from the frontend (e.g., an array of URLs to remove).
+        let updatedImagePaths = product.imagePaths || [];
 
-        // Upload NEW images if any were provided
         if (req.files && req.files.length > 0) {
             const uploadPromises = req.files.map(file => uploadToCloudinary(file));
             const newImagePaths = await Promise.all(uploadPromises);
-            updatedImagePaths = [...updatedImagePaths, ...newImagePaths]; // Combine old and new
+            updatedImagePaths = [...updatedImagePaths, ...newImagePaths];
         }
 
         // --- Handle Text Data Update ---
@@ -210,51 +243,34 @@ export const updateProduct = async (req, res) => {
             return res.status(400).json({ message: 'Product data (text fields) is missing for update.' });
         }
         const productData = JSON.parse(req.body.productData);
-        const { productType } = productData; // Use type from updated data
+        const { productType } = productData;
 
-        // Prepare updated fields (similar to createProduct)
-        let updateFields = {
-            productType: productType,
-            imagePaths: updatedImagePaths, // Use the potentially updated image list
-            category: productData.category,
-            name: productType === 'Bundle' ? productData.bundleName : productData.name_en,
-            price: productData.price_egp,
-            price_egp: productData.price_egp,
-            stock: productData.stock,
-            status: productData.status,
-            featured: productData.featured || false,
-        };
+        // Build update fields using the same helper function
+        const updateFields = buildProductData(productData, productType, updatedImagePaths);
 
+        // Add unset operations for type switching
         if (productType === 'Bundle') {
-            Object.assign(updateFields, {
-                name_en: productData.bundleName,
-                description_en: productData.bundleDescription,
-                bundleName: productData.bundleName,
-                bundleDescription: productData.bundleDescription,
-                bundleItems: productData.bundleItems,
-                 // Explicitly unset single product fields if switching type
-                $unset: { scents: "", size: "", formattedDescription: "", burnTime: "", wickType: "", coverageSpace: "" }
-            });
-        } else { // Single Product
-            Object.assign(updateFields, {
-                name_en: productData.name_en,
-                description_en: productData.description_en,
-                scents: productData.scents,
-                size: productData.size,
-                formattedDescription: productData.formattedDescription,
-                burnTime: productData.burnTime,
-                wickType: productData.wickType,
-                coverageSpace: productData.coverageSpace,
-                // Explicitly unset bundle fields if switching type
-                $unset: { bundleName: "", bundleDescription: "", bundleItems: "" }
-            });
+            updateFields.$unset = {
+                scents: "", size: "", formattedDescription: "", 
+                scentOptions: "", sizeOptions: "", weightOptions: "", typeOptions: "", shapeOptions: "",
+                burnTime: "", wickType: "", coverageSpace: "",
+                skinType: "", keyIngredients: "",
+                featureBenefit: "", soapWeight: "",
+                color: "", oilWeight: "",
+                massageWeight: "",
+                dimensions: "", material: "",
+                fizzySpecs: ""
+            };
+        } else {
+            updateFields.$unset = { 
+                bundleName: "", bundleDescription: "", bundleItems: "" 
+            };
         }
 
-        // Perform the update in MongoDB
         const updatedProduct = await Product.findByIdAndUpdate(
             productId,
             updateFields,
-            { new: true, runValidators: true } // Return the updated doc, run schema validation
+            { new: true, runValidators: true }
         );
 
         res.status(200).json({
@@ -272,10 +288,8 @@ export const updateProduct = async (req, res) => {
     }
 };
 
-
 /**
  * Endpoint: DELETE /api/products/:id (Admin Delete action)
- * Handles deleting a product
  */
 export const deleteProduct = async (req, res) => {
     try {
@@ -286,18 +300,10 @@ export const deleteProduct = async (req, res) => {
             return res.status(404).json({ message: 'Product not found.' });
         }
 
-        // Optional: Delete images from Cloudinary here if desired
-        // You would need the public_ids of the images, which are not currently stored.
-        // const imageDeletionPromises = deletedProduct.imagePaths.map(url => {
-        //    const publicId = /* Extract public_id from url */;
-        //    return cloudinary.v2.uploader.destroy(publicId);
-        // });
-        // await Promise.all(imageDeletionPromises);
-
         res.status(200).json({
             success: true,
             message: 'Product deleted successfully!',
-            productId: productId // Send back ID for frontend update
+            productId: productId
         });
 
     } catch (error) {
