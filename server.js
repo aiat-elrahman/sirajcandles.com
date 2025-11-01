@@ -5,8 +5,7 @@ import cors from "cors";
 import path from "path";
 import { fileURLToPath } from "url";
 
-// Import the router using the correct, lowercase filename
-import productRoutes from "./routes/productRoutes.js"; 
+import productRoutes from "./routes/productRoutes.js";
 import orderRoutes from "./routes/orderRoutes.js";
 
 dotenv.config();
@@ -14,13 +13,15 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Setup ES Module __dirname equivalent
+//  Module 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// 🧩 CORS Configuration (Kept from your original file)
+// 🧩 Updated CORS Configuration
 const allowedOrigins = [
-  "https://siraj-candles-website.netlify.app", 
+  "https://sirajcare.com",          // ✅ live domain
+  "https://www.sirajcare.com",      // ✅  www version 
+  "https://siraj-candles-website.netlify.app", // Netlify preview domain 
   "http://localhost:5173", 
   "http://127.0.0.1:5500" 
 ];
@@ -28,12 +29,12 @@ const allowedOrigins = [
 app.use(
   cors({
     origin: function (origin, callback) {
+      // Allow mobile apps\ Postman
       if (!origin || allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
         console.error(`❌ CORS Error: Origin ${origin} is not allowed.`);
-        // For security, do not expose the internal error message to the client
-        callback(new Error("Not allowed by CORS policy.")); 
+        callback(new Error("Not allowed by CORS policy."));
       }
     },
     methods: ["GET", "POST", "PUT", "DELETE"],
@@ -44,19 +45,18 @@ app.use(
 // Middleware
 app.use(express.json());
 
-
 // API Routes
-// Note: Only using productRoutes now, as it handles both Products and Bundles
 app.use("/api/products", productRoutes);
 app.use("/api/orders", orderRoutes);
-// route path
+
+// Root route
 app.get("/", (req, res) => {
-    res.send("Siraj backend is running 🚀");
+  res.send("Siraj backend is running 🚀");
 });
 
-// Database 
+// MongoDB connection
 mongoose
-  .connect(process.env.MONGO_URI) // Removed obsolete options
+  .connect(process.env.MONGO_URI)
   .then(() => {
     console.log("✅ MongoDB Connected");
     app.listen(PORT, () =>
@@ -67,3 +67,12 @@ mongoose
     console.error("❌ MongoDB connection failed:", err.message);
     process.exit(1);
   });
+
+// shutdown for Render
+process.on("SIGTERM", () => {
+  console.log("🧹 Shutting down gracefully...");
+  mongoose.connection.close(false, () => {
+    console.log("💾 MongoDB connection closed.");
+    process.exit(0);
+  });
+});
