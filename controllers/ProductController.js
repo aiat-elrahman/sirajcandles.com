@@ -56,7 +56,7 @@ const buildProductData = (productData, productType, imagePaths) => {
         Object.assign(finalProductDoc, {
             name_en: productData.name_en,
             description_en: productData.description_en,
-            
+            variants: productData.variants,
             // General fields
             scents: productData.scents,
             size: productData.size,
