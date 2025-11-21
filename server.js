@@ -7,6 +7,12 @@ import { fileURLToPath } from "url";
 
 import productRoutes from "./routes/productRoutes.js";
 import orderRoutes from "./routes/orderRoutes.js";
+// --- NEW ---
+import shippingRoutes from './routes/shippingRoutes.js';
+import discountRoutes from './routes/discountRoutes.js';
+import categoryRoutes from './routes/categoryRoutes.js';
+import careRoutes from "./routes/careRoutes.js";
+
 
 dotenv.config();
 
@@ -19,10 +25,10 @@ const __dirname = path.dirname(__filename);
 
 // 🧩 Updated CORS Configuration
 const allowedOrigins = [
-  "https://sirajcare.com",          // ✅ live domain
-  "https://www.sirajcare.com",      // ✅  www version 
+  "https://sirajcare.com",         // ✅ live domain
+  "https://www.sirajcare.com",       // ✅  www version 
   "https://siraj-candles-website.netlify.app", // Netlify preview domain 
-  "http://localhost:5173", 
+  "http://localhost:5173", // Your local admin app
   "http://127.0.0.1:5500" 
 ];
 
@@ -48,7 +54,13 @@ app.use(express.json());
 // API Routes
 app.use("/api/products", productRoutes);
 app.use("/api/orders", orderRoutes);
+// --- NEW ---
 
+
+app.use("/api/care", careRoutes);
+app.use('/api/shipping-rates', shippingRoutes); // Frontend expects /api/shipping-rates
+app.use('/api/discounts', discountRoutes);
+app.use('/api/categories', categoryRoutes);
 // Root route
 app.get("/", (req, res) => {
   res.send("Siraj backend is running 🚀");
@@ -75,4 +87,4 @@ process.on("SIGTERM", () => {
     console.log("💾 MongoDB connection closed.");
     process.exit(0);
   });
-});
+});``
