@@ -1,12 +1,19 @@
 import Order from "../models/Order.js";
+import Product from "../models/Product.js";
+import mongoose from "mongoose";
 
 /**
  * Endpoint: POST /api/orders (Frontend checkout)
  */
 export const createOrder = async (req, res) => {
+    // Start a transaction session to ensure data integrity
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
     try {
         const { customerInfo, items, subtotal, shippingFee, totalAmount, paymentMethod } = req.body;
 
+        // 1. Basic Validation
         if (!items || items.length === 0) {
             return res.status(400).json({ message: "No order items" });
         }
@@ -14,6 +21,50 @@ export const createOrder = async (req, res) => {
             return res.status(400).json({ message: "Missing required customer information" });
         }
 
+        // 2. Stock Deduction Logic
+        for (const item of items) {
+            if (!item.productId) {
+                throw new Error(`Product ID is missing for item: ${item.name}`);
+            }
+
+            // Find the product and lock it for this transaction
+            const product = await Product.findById(item.productId).session(session);
+
+            if (!product) {
+                throw new Error(`Product not found in database: ${item.name}`);
+            }
+
+            // --- A. Variant Stock Deduction (Priority) ---
+            if (item.variantName) {
+                // Find the specific variant (e.g., "100g", "Red") inside the product
+                const variant = product.variants.find(v => v.variantName === item.variantName);
+
+                if (!variant) {
+                    throw new Error(`Variant '${item.variantName}' not found for product '${item.name}'`);
+                }
+
+                // Check Variant Stock
+                if (variant.stock < item.quantity) {
+                    throw new Error(`Not enough stock for ${item.name} (${item.variantName}). Available: ${variant.stock}, Requested: ${item.quantity}`);
+                }
+
+                // Deduct Variant Stock
+                variant.stock -= item.quantity;
+            }
+
+            // --- B. Main Stock Deduction (Fallback/Total) ---
+            // We also check/deduct the main stock count to keep the "total inventory" accurate
+            if (product.stock < item.quantity) {
+                throw new Error(`Not enough total stock for: ${item.name}. Available: ${product.stock}, Requested: ${item.quantity}`);
+            }
+
+            product.stock -= item.quantity;
+
+            // Save the product updates within the transaction
+            await product.save({ session });
+        }
+
+        // 3. Create the Order
         const order = new Order({
             customerInfo,
             items,
@@ -21,10 +72,14 @@ export const createOrder = async (req, res) => {
             shippingFee,
             totalAmount,
             paymentMethod,
-            status: 'Pending', // Explicitly set initial status
+            status: 'Pending', // Default status
         });
 
-        const createdOrder = await order.save();
+        const createdOrder = await order.save({ session });
+
+        // 4. Commit Transaction (Everything succeeded)
+        await session.commitTransaction();
+        session.endSession();
 
         res.status(201).json({
             message: "Order created successfully",
@@ -32,8 +87,14 @@ export const createOrder = async (req, res) => {
         });
 
     } catch (error) {
+        // 5. Abort Transaction (Something failed, roll back all changes)
+        await session.abortTransaction();
+        session.endSession();
+
         console.error("Error creating order:", error);
-        res.status(500).json({ message: "Server error creating order", error: error.message });
+        res.status(500).json({ 
+            message: error.message || "Server error creating order" 
+        });
     }
 };
 
