@@ -14,6 +14,27 @@ const productSchema = new mongoose.Schema(
     price: { type: Number, required: true },
 
     // --- Fields from Admin Panel (Common) ---
+    variants: [{
+  variantName: {  // e.g., "60g", "100g", "200ml", "Red", "Vanilla"
+    type: String,
+    required: true
+  },
+  variantType: {  // e.g., "weight", "size", "color", "scent"
+    type: String,
+    required: true
+  },
+  price: {
+    type: Number,
+    required: true,
+    min: 0
+  },
+  stock: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
+  sku: String  // Optional: Stock Keeping Unit
+}],
     productType: { type: String, enum: ["Single", "Bundle"], required: true },
     category: { 
       type: String, 
