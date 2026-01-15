@@ -1,110 +1,112 @@
 import Order from "../models/Order.js";
 import Product from "../models/Product.js";
 import mongoose from "mongoose";
+import Discount from "../models/Discount.js"; // Added missing import
 
-/**
- * Endpoint: POST /api/orders (Frontend checkout)
- */
+// --- 1. CREATE ORDER (User Side) ---
 export const createOrder = async (req, res) => {
-    // Start a transaction session to ensure data integrity
     const session = await mongoose.startSession();
     session.startTransaction();
 
     try {
-        const { customerInfo, items, subtotal, shippingFee, totalAmount, paymentMethod } = req.body;
+        // Extract shippingFee from frontend
+        const { customerInfo, items, paymentMethod, discountCode, shippingFee } = req.body;
 
-        // 1. Basic Validation
-        if (!items || items.length === 0) {
-            return res.status(400).json({ message: "No order items" });
-        }
-        if (!customerInfo || !customerInfo.name || !customerInfo.email || !customerInfo.phone || !customerInfo.address || !customerInfo.city) {
-            return res.status(400).json({ message: "Missing required customer information" });
-        }
+        if (!items || items.length === 0) throw new Error("No order items provided");
 
-        // 2. Stock Deduction Logic
+        let calculatedSubtotal = 0;
+        const finalItems = [];
+
         for (const item of items) {
-            if (!item.productId) {
-                throw new Error(`Product ID is missing for item: ${item.name}`);
-            }
-
-            // Find the product and lock it for this transaction
             const product = await Product.findById(item.productId).session(session);
+            if (!product) throw new Error(`Product not found: ${item.name}`);
 
-            if (!product) {
-                throw new Error(`Product not found in database: ${item.name}`);
-            }
+            let priceToUse = product.price_egp;
+            let variantFound = false;
 
-            // --- A. Variant Stock Deduction (Priority) ---
+            // --- Variant Logic ---
             if (item.variantName) {
-                // Find the specific variant (e.g., "100g", "Red") inside the product
                 const variant = product.variants.find(v => v.variantName === item.variantName);
-
-                if (!variant) {
-                    throw new Error(`Variant '${item.variantName}' not found for product '${item.name}'`);
+                if (variant) {
+                    if (variant.stock < item.quantity) {
+                        throw new Error(`Insufficient stock for ${product.name} (${item.variantName}).`);
+                    }
+                    variant.stock -= item.quantity;
+                    priceToUse = variant.price; // Use SERVER price
+                    variantFound = true;
                 }
-
-                // Check Variant Stock
-                if (variant.stock < item.quantity) {
-                    throw new Error(`Not enough stock for ${item.name} (${item.variantName}). Available: ${variant.stock}, Requested: ${item.quantity}`);
-                }
-
-                // Deduct Variant Stock
-                variant.stock -= item.quantity;
             }
 
-            // --- B. Main Stock Deduction (Fallback/Total) ---
-            // We also check/deduct the main stock count to keep the "total inventory" accurate
-            if (product.stock < item.quantity) {
-                throw new Error(`Not enough total stock for: ${item.name}. Available: ${product.stock}, Requested: ${item.quantity}`);
+            // --- Main Stock Logic ---
+            if (!variantFound) {
+                if (product.stock < item.quantity) {
+                    throw new Error(`Insufficient stock for ${product.name}.`);
+                }
+                product.stock -= item.quantity;
             }
 
-            product.stock -= item.quantity;
-
-            // Save the product updates within the transaction
             await product.save({ session });
+            calculatedSubtotal += priceToUse * item.quantity;
+
+            finalItems.push({
+                productId: product._id,
+                name: product.productType === 'Bundle' ? product.bundleName : product.name_en,
+                quantity: item.quantity,
+                price: priceToUse,
+                variantName: item.variantName || null,
+                customization: item.customization || []
+            });
         }
 
-        // 3. Create the Order
+        // --- Shipping Logic (Dynamic) ---
+        // If subtotal > 2000, free shipping. Otherwise use city rate (or default 50)
+        let finalShippingFee = 0;
+        if (calculatedSubtotal >= 2000) {
+            finalShippingFee = 0;
+        } else {
+            finalShippingFee = Number(shippingFee) || 50;
+        }
+
+        // --- Discount Logic ---
+        let discountAmount = 0;
+        if (discountCode) {
+            const discount = await Discount.findOne({ code: discountCode.toUpperCase(), status: 'active' }).session(session);
+            if (discount) {
+                discountAmount = discount.type === 'percentage' 
+                    ? calculatedSubtotal * (discount.value / 100) 
+                    : discount.value;
+            }
+        }
+
+        const totalAmount = Math.max(0, calculatedSubtotal + finalShippingFee - discountAmount);
+
         const order = new Order({
             customerInfo,
-            items,
-            subtotal,
-            shippingFee,
+            items: finalItems,
+            subtotal: calculatedSubtotal,
+            shippingFee: finalShippingFee,
             totalAmount,
             paymentMethod,
-            status: 'Pending', // Default status
+            status: 'Pending',
         });
 
         const createdOrder = await order.save({ session });
-
-        // 4. Commit Transaction (Everything succeeded)
         await session.commitTransaction();
         session.endSession();
 
-        res.status(201).json({
-            message: "Order created successfully",
-            orderId: createdOrder._id
-        });
+        res.status(201).json({ message: "Order created successfully", orderId: createdOrder._id });
 
     } catch (error) {
-        // 5. Abort Transaction (Something failed, roll back all changes)
         await session.abortTransaction();
         session.endSession();
-
-        console.error("Error creating order:", error);
-        res.status(500).json({ 
-            message: error.message || "Server error creating order" 
-        });
+        console.error("Order Error:", error);
+        res.status(500).json({ message: error.message });
     }
 };
 
-
-/**
- * Endpoint: GET /api/orders (Admin panel list)
- */
+// --- 2. GET ALL ORDERS (Admin Side) ---
 export const getAllOrders = async (req, res) => {
     try {
-        // Fetch orders, sort by newest first
         const orders = await Order.find().sort({ createdAt: -1 });
         res.status(200).json(orders);
     } catch (error) {
@@ -113,10 +115,7 @@ export const getAllOrders = async (req, res) => {
     }
 };
 
-
-/**
- * Endpoint: GET /api/orders/:id (Admin panel view details)
- */
+// --- 3. GET ORDER BY ID (Admin Side) ---
 export const getOrderById = async (req, res) => {
     try {
         const order = await Order.findById(req.params.id);
@@ -135,13 +134,10 @@ export const getOrderById = async (req, res) => {
     }
 };
 
-
-/**
- * Endpoint: PUT /api/orders/:id/status (Admin panel update status)
- */
+// --- 4. UPDATE STATUS (Admin Side) ---
 export const updateOrderStatus = async (req, res) => {
     try {
-        const { status } = req.body; // Expecting { "status": "NewStatus" } in body
+        const { status } = req.body;
         const allowedStatuses = ['Pending', 'Processing', 'Shipped', 'Delivered', 'Cancelled'];
 
         if (!status || !allowedStatuses.includes(status)) {
