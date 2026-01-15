@@ -18,7 +18,10 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-
+// --- PASTE THE HEALTH CHECK HERE ---
+app.get('/api/health', (req, res) => {
+  res.status(200).send('OK');
+});
 //  Module 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
