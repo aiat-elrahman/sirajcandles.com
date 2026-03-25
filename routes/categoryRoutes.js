@@ -17,7 +17,7 @@ router.get('/', async (req, res) => {
 // POST create new category
 router.post('/', async (req, res) => {
   try {
-    const { name, sortOrder } = req.body;
+    const { name, image, sortOrder } = req.body;
     
     // Check if category already exists
     const existingCategory = await Category.findOne({ name });
@@ -41,12 +41,13 @@ router.post('/', async (req, res) => {
 // PUT update category
 router.put('/:id', async (req, res) => {
   try {
-    const { name, sortOrder } = req.body;
+    const { name, image, sortOrder } = req.body;
     
     const updatedCategory = await Category.findByIdAndUpdate(
       req.params.id,
       { 
         name: name?.trim(),
+         image: image, 
         sortOrder 
       },
       { new: true, runValidators: true }
