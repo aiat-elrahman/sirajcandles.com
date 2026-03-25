@@ -4,41 +4,55 @@ import mongoose from "mongoose";
 import cors from "cors";
 import path from "path";
 import { fileURLToPath } from "url";
+import multer from "multer";
+import { v2 as cloudinary } from "cloudinary";
+import jwt from "jsonwebtoken";
 
 import productRoutes from "./routes/productRoutes.js";
 import orderRoutes from "./routes/orderRoutes.js";
-// --- NEW ---
 import shippingRoutes from './routes/shippingRoutes.js';
 import discountRoutes from './routes/discountRoutes.js';
 import categoryRoutes from './routes/categoryRoutes.js';
 import careRoutes from "./routes/careRoutes.js";
-
-
+import uploadRoutes from './routes/uploadRoutes.js';
+import heroRoutes from './routes/heroRoutes.js';
+import adminRoutes from './routes/adminRoutes.js';
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-// --- PASTE THE HEALTH CHECK HERE ---
-app.get('/api/health', (req, res) => {
-  res.status(200).send('OK');
-});
-//  Module 
+
+// Module paths
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// 🧩 Updated CORS Configuration
+// ============================================
+// CLOUDINARY CONFIGURATION
+// ============================================
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET
+});
+
+// Configure multer for memory storage
+const upload = multer({ storage: multer.memoryStorage() });
+
+// ============================================
+// CORS CONFIGURATION
+// ============================================
 const allowedOrigins = [
-  "https://sirajcare.com",         // ✅ live domain
-  "https://www.sirajcare.com",       // ✅  www version 
-  "https://siraj-candles-website.netlify.app", // Netlify preview domain 
-  "http://localhost:5173", // Your local admin app
-  "http://127.0.0.1:5500" 
+  "https://sirajcare.com",
+  "https://www.sirajcare.com",
+  "https://siraj-candles-website.netlify.app",
+  "http://localhost:5173",
+  "http://127.0.0.1:5500",
+  "http://localhost:3000"
 ];
 
 app.use(
   cors({
     origin: function (origin, callback) {
-      // Allow mobile apps\ Postman
       if (!origin || allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
@@ -54,22 +68,256 @@ app.use(
 // Middleware
 app.use(express.json());
 
-// API Routes
+// ============================================
+// MONGODB MODELS (Add these before routes)
+// ============================================
+
+// Hero Settings Schema
+const heroSettingsSchema = new mongoose.Schema({
+  backgroundImage: { type: String, default: '' },
+  buttonText: { type: String, default: 'Shop Now' },
+  buttonLink: { type: String, default: '/products.html' },
+  title: { type: String, default: '' },
+  subtitle: { type: String, default: '' },
+  updatedAt: { type: Date, default: Date.now }
+});
+
+const HeroSettings = mongoose.model('HeroSettings', heroSettingsSchema);
+app.use('/api/upload', uploadRoutes);
+app.use('/api/settings/hero', heroRoutes);
+app.use('/api/admin', adminRoutes);
+// ============================================
+// AUTHENTICATION MIDDLEWARE
+// ============================================
+const authenticateToken = (req, res, next) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+  
+  if (!token) {
+    return res.status(401).json({ error: 'Access denied. No token provided.' });
+  }
+  
+  jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
+    if (err) {
+      return res.status(403).json({ error: 'Invalid or expired token.' });
+    }
+    req.user = user;
+    next();
+  });
+};
+
+// ============================================
+// API ROUTES (Your existing routes)
+// ============================================
 app.use("/api/products", productRoutes);
 app.use("/api/orders", orderRoutes);
-// --- NEW ---
-
-
 app.use("/api/care", careRoutes);
-app.use('/api/shipping-rates', shippingRoutes); // Frontend expects /api/shipping-rates
+app.use('/api/shipping-rates', shippingRoutes);
 app.use('/api/discounts', discountRoutes);
 app.use('/api/categories', categoryRoutes);
-// Root route
+
+// ============================================
+// HEALTH CHECK
+// ============================================
+app.get('/api/health', (req, res) => {
+  res.status(200).send('OK');
+});
+
+// ============================================
+// NEW: UPLOAD ENDPOINT
+// ============================================
+app.post('/api/upload', upload.single('image'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    // Upload to Cloudinary
+    const result = await new Promise((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(
+        {
+          folder: 'siraj-candles',
+          transformation: [
+            { quality: 'auto' },
+            { fetch_format: 'auto' }
+          ]
+        },
+        (error, result) => {
+          if (error) reject(error);
+          else resolve(result);
+        }
+      );
+      stream.end(req.file.buffer);
+    });
+
+    res.json({ 
+      success: true, 
+      imageUrl: result.secure_url 
+    });
+  } catch (error) {
+    console.error('Upload error:', error);
+    res.status(500).json({ error: 'Upload failed', details: error.message });
+  }
+});
+
+// ============================================
+// NEW: HERO SETTINGS ENDPOINTS
+// ============================================
+app.get('/api/settings/hero', async (req, res) => {
+  try {
+    let settings = await HeroSettings.findOne();
+    if (!settings) {
+      // Create default settings if none exist
+      settings = await HeroSettings.create({
+        backgroundImage: 'https://res.cloudinary.com/dvr195vfw/image/upload/f_auto,q_auto,w_1200/v1765150425/Your_paragraph_text_1_ck0hsl.png',
+        buttonText: 'Shop Now',
+        buttonLink: '/products.html',
+        title: 'Illuminate Your Space',
+        subtitle: 'Handcrafted Candles & Self-care Luxuries'
+      });
+      console.log('✅ Created default hero settings');
+    }
+    res.json(settings);
+  } catch (error) {
+    console.error('Error fetching hero settings:', error);
+    res.status(500).json({ error: 'Failed to fetch hero settings' });
+  }
+});
+
+app.post('/api/settings/hero', authenticateToken, async (req, res) => {
+  try {
+    const { backgroundImage, buttonText, buttonLink, title, subtitle } = req.body;
+    
+    let settings = await HeroSettings.findOne();
+    if (settings) {
+      // Update existing
+      settings.backgroundImage = backgroundImage || settings.backgroundImage;
+      settings.buttonText = buttonText || settings.buttonText;
+      settings.buttonLink = buttonLink || settings.buttonLink;
+      settings.title = title || settings.title;
+      settings.subtitle = subtitle || settings.subtitle;
+      settings.updatedAt = Date.now();
+      await settings.save();
+      console.log('✅ Hero settings updated');
+    } else {
+      // Create new
+      settings = await HeroSettings.create({
+        backgroundImage,
+        buttonText,
+        buttonLink,
+        title,
+        subtitle
+      });
+      console.log('✅ Hero settings created');
+    }
+    
+    res.json({ success: true, settings });
+  } catch (error) {
+    console.error('Error saving hero settings:', error);
+    res.status(500).json({ error: 'Failed to save hero settings' });
+  }
+});
+
+// ============================================
+// NEW: ADMIN AUTHENTICATION
+// ============================================
+app.post('/api/admin/login', async (req, res) => {
+  const { username, password } = req.body;
+  
+  // Check credentials against environment variables
+  if (username === process.env.ADMIN_USER && password === process.env.ADMIN_PASS) {
+    const token = jwt.sign(
+      { username, role: 'admin' }, 
+      process.env.JWT_SECRET, 
+      { expiresIn: '7d' }
+    );
+    res.json({ 
+      success: true, 
+      token,
+      message: 'Login successful' 
+    });
+  } else {
+    res.status(401).json({ 
+      success: false, 
+      message: 'Invalid username or password' 
+    });
+  }
+});
+
+app.get('/api/admin/verify', authenticateToken, (req, res) => {
+  res.json({ 
+    valid: true,
+    user: req.user 
+  });
+});
+
+// ============================================
+// NEW: ANALYTICS ENDPOINT
+// ============================================
+app.get('/api/admin/analytics', authenticateToken, async (req, res) => {
+  try {
+    // Import Order and Product models (if not already imported)
+    const Order = mongoose.model('Order');
+    const Product = mongoose.model('Product');
+    
+    // Get total orders count
+    const totalOrders = await Order.countDocuments();
+    
+    // Get total revenue
+    const revenueResult = await Order.aggregate([
+      { $match: { status: { $ne: 'cancelled' } } },
+      { $group: { _id: null, total: { $sum: '$totalAmount' } } }
+    ]);
+    const totalRevenue = revenueResult[0]?.total || 0;
+    
+    // Get total products count
+    const totalProducts = await Product.countDocuments();
+    
+    // Get unique customers count (based on email)
+    const customersResult = await Order.aggregate([
+      { $group: { _id: '$customerInfo.email' } },
+      { $count: 'count' }
+    ]);
+    const totalCustomers = customersResult[0]?.count || 0;
+    
+    // Calculate conversion rate (simple calculation based on orders vs unique visitors)
+    // You'll need to implement proper visitor tracking for accurate rates
+    const conversionRate = totalOrders > 0 && totalCustomers > 0 
+      ? ((totalOrders / totalCustomers) * 100).toFixed(1) 
+      : 0;
+    
+    res.json({
+      totalOrders,
+      totalRevenue,
+      totalProducts,
+      totalCustomers,
+      conversionRate: parseFloat(conversionRate),
+      abandonedCart: 0 // You'll need to implement cart abandonment tracking
+    });
+  } catch (error) {
+    console.error('Analytics error:', error);
+    // Return default values if models aren't available yet
+    res.json({
+      totalOrders: 0,
+      totalRevenue: 0,
+      totalProducts: 0,
+      totalCustomers: 0,
+      conversionRate: 0,
+      abandonedCart: 0
+    });
+  }
+});
+
+// ============================================
+// ROOT ROUTE
+// ============================================
 app.get("/", (req, res) => {
   res.send("Siraj backend is running 🚀");
 });
 
-// MongoDB connection
+// ============================================
+// MONGODB CONNECTION & SERVER START
+// ============================================
 mongoose
   .connect(process.env.MONGO_URI)
   .then(() => {
@@ -83,11 +331,11 @@ mongoose
     process.exit(1);
   });
 
-// shutdown for Render
+// Graceful shutdown for Render
 process.on("SIGTERM", () => {
   console.log("🧹 Shutting down gracefully...");
   mongoose.connection.close(false, () => {
     console.log("💾 MongoDB connection closed.");
     process.exit(0);
   });
-});``
+});
