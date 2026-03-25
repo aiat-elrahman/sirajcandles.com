@@ -21,7 +21,7 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 // Module paths
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -73,19 +73,19 @@ app.use(express.json());
 // ============================================
 
 // Hero Settings Schema
-const heroSettingsSchema = new mongoose.Schema({
-  backgroundImage: { type: String, default: '' },
-  buttonText: { type: String, default: 'Shop Now' },
-  buttonLink: { type: String, default: '/products.html' },
-  title: { type: String, default: '' },
-  subtitle: { type: String, default: '' },
-  updatedAt: { type: Date, default: Date.now }
-});
+//const heroSettingsSchema = new mongoose.Schema({
+ // backgroundImage: { type: String, default: '' },
+ // buttonText: { type: String, default: 'Shop Now' },
+  //buttonLink: { type: String, default: '/products.html' },
+ // title: { type: String, default: '' },
+ // subtitle: { type: String, default: '' },
+ // updatedAt: { type: Date, default: Date.now }
+//});
 
-const HeroSettings = mongoose.model('HeroSettings', heroSettingsSchema);
-app.use('/api/upload', uploadRoutes);
-app.use('/api/settings/hero', heroRoutes);
-app.use('/api/admin', adminRoutes);
+//const HeroSettings = mongoose.model('HeroSettings', heroSettingsSchema);
+//app.use('/api/upload', uploadRoutes);
+// app.use('/api/settings/hero', heroRoutes);
+// app.use('/api/admin', adminRoutes);
 // ============================================
 // AUTHENTICATION MIDDLEWARE
 // ============================================
