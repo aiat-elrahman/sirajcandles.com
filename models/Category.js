@@ -7,6 +7,10 @@ const categorySchema = new mongoose.Schema({
     unique: true,
     trim: true
   },
+  image: {
+    type: String,
+    default: ''  // This will store the Cloudinary image URL
+  },
   sortOrder: {
     type: Number,
     required: true,
