@@ -17,11 +17,11 @@ import careRoutes from "./routes/careRoutes.js";
 import uploadRoutes from './routes/uploadRoutes.js';
 import heroRoutes from './routes/heroRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
+import HeroSettings from './models/HeroSettings.js';
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));  
 // Module paths
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -332,10 +332,9 @@ mongoose
   });
 
 // Graceful shutdown for Render
-process.on("SIGTERM", () => {
+process.on("SIGTERM", async () => {
   console.log("🧹 Shutting down gracefully...");
-  mongoose.connection.close(false, () => {
-    console.log("💾 MongoDB connection closed.");
-    process.exit(0);
-  });
+  await mongoose.connection.close();
+  console.log("💾 MongoDB connection closed.");
+  process.exit(0);
 });
