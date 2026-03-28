@@ -1,83 +1,57 @@
+// routes/categoryRoutes.js
+// Add subcategories field to your category schema
+
 import express from 'express';
-import Category from '../models/Category.js';
+import mongoose from 'mongoose';
 
 const router = express.Router();
 
-// GET all categories sorted by sortOrder
+const categorySchema = new mongoose.Schema({
+    name:           { type: String, required: true, unique: true, trim: true },
+    image:          { type: String, default: '' },
+    sortOrder:      { type: Number, default: 0 },
+    subcategories:  [{ type: String, trim: true }],   // ← NEW
+}, { timestamps: true });
+
+const Category = mongoose.models.Category || mongoose.model('Category', categorySchema);
+
+// GET all
 router.get('/', async (req, res) => {
-  try {
-    const categories = await Category.find().sort({ sortOrder: 1 });
-    res.json(categories);
-  } catch (error) {
-    console.error('Error fetching categories:', error);
-    res.status(500).json({ message: 'Error fetching categories', error: error.message });
-  }
+    try {
+        const categories = await Category.find().sort({ sortOrder: 1 });
+        res.json(categories);
+    } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
-// POST create new category
+// POST create
 router.post('/', async (req, res) => {
-  try {
-    const { name, image, sortOrder } = req.body;
-    
-    // Check if category already exists
-    const existingCategory = await Category.findOne({ name });
-    if (existingCategory) {
-      return res.status(400).json({ message: 'Category already exists' });
+    try {
+        const category = new Category(req.body);
+        res.status(201).json(await category.save());
+    } catch (err) {
+        if (err.code === 11000) return res.status(400).json({ message: 'Category name already exists.' });
+        res.status(400).json({ message: err.message });
     }
-
-    const newCategory = new Category({
-      name: name.trim(),
-      sortOrder: sortOrder || 0
-    });
-
-    const savedCategory = await newCategory.save();
-    res.status(201).json(savedCategory);
-  } catch (error) {
-    console.error('Error creating category:', error);
-    res.status(500).json({ message: 'Error creating category', error: error.message });
-  }
 });
 
-// PUT update category
+// PUT update
 router.put('/:id', async (req, res) => {
-  try {
-    const { name, image, sortOrder } = req.body;
-    
-    const updatedCategory = await Category.findByIdAndUpdate(
-      req.params.id,
-      { 
-        name: name?.trim(),
-         image: image, 
-        sortOrder 
-      },
-      { new: true, runValidators: true }
-    );
-
-    if (!updatedCategory) {
-      return res.status(404).json({ message: 'Category not found' });
-    }
-
-    res.json(updatedCategory);
-  } catch (error) {
-    console.error('Error updating category:', error);
-    res.status(500).json({ message: 'Error updating category', error: error.message });
-  }
+    try {
+        const updated = await Category.findByIdAndUpdate(
+            req.params.id, req.body, { new: true, runValidators: true }
+        );
+        if (!updated) return res.status(404).json({ message: 'Category not found' });
+        res.json(updated);
+    } catch (err) { res.status(400).json({ message: err.message }); }
 });
 
-// DELETE category
+// DELETE
 router.delete('/:id', async (req, res) => {
-  try {
-    const deletedCategory = await Category.findByIdAndDelete(req.params.id);
-    
-    if (!deletedCategory) {
-      return res.status(404).json({ message: 'Category not found' });
-    }
-
-    res.json({ message: 'Category deleted successfully' });
-  } catch (error) {
-    console.error('Error deleting category:', error);
-    res.status(500).json({ message: 'Error deleting category', error: error.message });
-  }
+    try {
+        const deleted = await Category.findByIdAndDelete(req.params.id);
+        if (!deleted) return res.status(404).json({ message: 'Category not found' });
+        res.json({ message: 'Category deleted' });
+    } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
 export default router;
