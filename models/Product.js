@@ -38,24 +38,7 @@ const productSchema = new mongoose.Schema(
     productType: { type: String, enum: ["Single", "Bundle"], required: true },
     category: { 
       type: String, 
-      required: true,
-      enum: [
-        "Candles",
-        "Pottery Collection", 
-        "Wax Burners",
-        "Deodorant",
-        "Soap",
-        "Body Splash", 
-        "Shimmering Body Oil",
-        "Massage Candles",
-        "Fizzy Salts",
-        "Fresheners",
-        "Wax Melts",
-        "Car Diffusers",
-        "Reed Diffusers",
-        "Sets",
-        "Bundles"
-      ]
+      required: true 
     },
     price_egp: { type: Number, required: true },
     stock: { type: Number, default: 0, required: true },
