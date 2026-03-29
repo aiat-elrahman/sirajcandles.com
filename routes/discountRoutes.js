@@ -91,25 +91,38 @@ function calculateDiscount(discount, cartTotal, cartItems) {
     }
 
     if (discount.type === 'buyxgety') {
-        const cat = discount.buyxgetyCategory;
-        const qualifying = cartItems
-            .filter(i => cat === 'all' || (i.category||'').toLowerCase() === cat.toLowerCase())
-            .flatMap(i => Array(i.quantity).fill(i.price))
-            .sort((a, b) => a - b); // ascending — cheapest first
+    const cat = discount.buyxgetyCategory;
+    const qualifying = cartItems
+        .filter(i => cat === 'all' || (i.category||'').toLowerCase() === cat.toLowerCase())
+        .flatMap(i => Array(i.quantity).fill(i.price))
+        .sort((a, b) => a - b); // cheapest first
 
-        const totalNeeded = parseInt(discount.buyQuantity) + parseInt(discount.getQuantity);
-        if (qualifying.length < totalNeeded) {
-            return { valid: false, message: `Add ${totalNeeded - qualifying.length} more ${cat === 'all' ? '' : cat} item(s) to qualify for this deal.` };
-        }
+    const buyQty = parseInt(discount.buyQuantity);
+    const getQty = parseInt(discount.getQuantity);
+    const groupSize = buyQty + getQty;
 
-        // Discount applies to the cheapest N items
-        const discountedItems = qualifying.slice(0, discount.getQuantity);
-        discountAmount = discountedItems.reduce((s, price) => s + price * (discount.getDiscountPct / 100), 0);
-        discountAmount = Math.round(discountAmount * 100) / 100;
-        details = `🎁 Buy ${discount.buyQuantity} Get ${discount.getQuantity} deal — saving ${discountAmount.toFixed(2)} EGP`;
-        return { discountAmount, freeShipping, details };
+    if (qualifying.length < groupSize) {
+        return { valid: false, message: `Add ${groupSize - qualifying.length} more ${cat === 'all' ? '' : cat} item(s) to qualify for this deal.` };
     }
 
+    // Calculate how many complete groups the customer has
+    const completeGroups = Math.floor(qualifying.length / groupSize);
+
+    // For each group, the cheapest getQty items are discounted
+    // Since array is sorted ascending, cheapest items are at the start of each group
+    discountAmount = 0;
+    for (let g = 0; g < completeGroups; g++) {
+        const groupStart = g * groupSize;
+        for (let i = groupStart; i < groupStart + getQty; i++) {
+            discountAmount += qualifying[i] * (discount.getDiscountPct / 100);
+        }
+    }
+
+    discountAmount = Math.round(discountAmount * 100) / 100;
+    const timesApplied = completeGroups > 1 ? ` (×${completeGroups})` : '';
+    details = `🎁 Buy ${buyQty} Get ${getQty} deal${timesApplied} — saving ${discountAmount.toFixed(2)} EGP`;
+    return { discountAmount, freeShipping, details };
+}
     // percentage or fixed
     let applicableTotal = cartTotal;
     if (discount.appliesTo === 'categories' && discount.categories.length > 0) {
