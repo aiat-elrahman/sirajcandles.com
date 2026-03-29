@@ -1,16 +1,24 @@
-// routes/categoryRoutes.js
-// Add subcategories field to your category schema
-
 import express from 'express';
 import mongoose from 'mongoose';
+import { v2 as cloudinary } from 'cloudinary';
+import multer from 'multer';
+import DatauriParser from 'datauri/parser.js';
+import path from 'path';
 
 const router = express.Router();
+const upload = multer({ storage: multer.memoryStorage() });
+const parser = new DatauriParser();
+
+const subcategorySchema = new mongoose.Schema({
+    name:  { type: String, required: true, trim: true },
+    image: { type: String, default: '' },
+}, { _id: false });
 
 const categorySchema = new mongoose.Schema({
-    name:           { type: String, required: true, unique: true, trim: true },
-    image:          { type: String, default: '' },
-    sortOrder:      { type: Number, default: 0 },
-    subcategories:  [{ type: String, trim: true }],   // ← NEW
+    name:          { type: String, required: true, unique: true, trim: true },
+    image:         { type: String, default: '' },
+    sortOrder:     { type: Number, default: 0 },
+    subcategories: [subcategorySchema],
 }, { timestamps: true });
 
 const Category = mongoose.models.Category || mongoose.model('Category', categorySchema);
@@ -18,8 +26,7 @@ const Category = mongoose.models.Category || mongoose.model('Category', category
 // GET all
 router.get('/', async (req, res) => {
     try {
-        const categories = await Category.find().sort({ sortOrder: 1 });
-        res.json(categories);
+        res.json(await Category.find().sort({ sortOrder: 1 }));
     } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
@@ -52,6 +59,25 @@ router.delete('/:id', async (req, res) => {
         if (!deleted) return res.status(404).json({ message: 'Category not found' });
         res.json({ message: 'Category deleted' });
     } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
+// POST upload subcategory image
+// Used by CategoryManager to upload an image for a specific subcategory
+router.post('/:id/subcategory-image', upload.single('image'), async (req, res) => {
+    try {
+        if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
+
+        const dataUri = parser.format(path.extname(req.file.originalname), req.file.buffer);
+        const result = await cloudinary.uploader.upload(dataUri.content, {
+            folder: 'siraj-categories',
+            transformation: [{ quality: 'auto' }, { fetch_format: 'auto' }]
+        });
+
+        res.json({ imageUrl: result.secure_url });
+    } catch (err) {
+        console.error('Subcategory image upload error:', err);
+        res.status(500).json({ message: 'Upload failed', error: err.message });
+    }
 });
 
 export default router;
