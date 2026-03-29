@@ -150,6 +150,7 @@ export const getAllProducts = async (req, res) => {
         const query = status ? { status } : { status: 'Active' };
 
         if (category) query.category = category;
+        if (req.query.sub) query.subcategory = req.query.sub;
         if (productType) query.productType = productType;
         if (search) {
              query.$or = [
