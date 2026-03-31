@@ -144,34 +144,51 @@ export const createProduct = async (req, res) => {
  */
 export const getAllProducts = async (req, res) => {
     try {
-        const { page = 1, limit = 12, category, productType, sort, order = 'asc', search, exclude_id, isBestSeller, status } = req.query;
+        // ✅ FIX: Add 'sub' to destructuring
+        const { 
+            page = 1, 
+            limit = 12, 
+            category, 
+            sub,           // ← ADD THIS
+            productType, 
+            sort, 
+            order = 'asc', 
+            search, 
+            exclude_id, 
+            isBestSeller, 
+            status 
+        } = req.query;
 
         // Default to Active for frontend, allow filtering by status for admin
         const query = status ? { status } : { status: 'Active' };
 
+        // ✅ FIX: Use destructured 'sub' variable
         if (category) query.category = category;
-        if (req.query.sub) query.subcategory = req.query.sub;
+        if (sub) query.subcategory = sub;  // ← USE 'sub' NOT 'req.query.sub'
         if (productType) query.productType = productType;
+        
         if (search) {
-             query.$or = [
+            query.$or = [
                 { name: { $regex: search, $options: 'i' } },
                 { name_en: { $regex: search, $options: 'i' } },
                 { bundleName: { $regex: search, $options: 'i' } },
                 { description_en: { $regex: search, $options: 'i' } }
             ];
         }
+        
         if (exclude_id) query._id = { $ne: exclude_id };
         if (isBestSeller === 'true') query.featured = true;
 
+        // Sort criteria
         const sortCriteria = {};
-         if (sort === 'price') {
+        if (sort === 'price') {
             sortCriteria['price_egp'] = order === 'desc' ? -1 : 1;
         } else if (sort === 'name') {
-             sortCriteria['name'] = order === 'desc' ? -1 : 1;
+            sortCriteria['name'] = order === 'desc' ? -1 : 1;
         } else if (sort === 'newest' || !sort) {
             sortCriteria['createdAt'] = -1;
         } else if (sort) {
-             sortCriteria[sort] = order === 'desc' ? -1 : 1;
+            sortCriteria[sort] = order === 'desc' ? -1 : 1;
         }
 
         const options = {
