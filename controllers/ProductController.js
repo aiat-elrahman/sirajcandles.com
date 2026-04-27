@@ -29,26 +29,33 @@ const uploadToCloudinary = async (file) => {
 };
 
 // Helper function to build product data based on category and type
+// ProductController.js - Update this helper function
 const buildProductData = (productData, productType, imagePaths) => {
+    // 1. Determine the "Common" name and price regardless of type
+    const displayName = productType === 'Bundle' ? productData.bundleName : productData.name_en;
+    const displayPrice = productType === 'Bundle' ? productData.bundlePrice : productData.price_egp;
+
     let finalProductDoc = {
         productType: productType,
         imagePaths: imagePaths,
         category: productData.category,
-        name: productType === 'Bundle' ? productData.bundleName : productData.name_en,
-        price: productData.price_egp,
-        price_egp: productData.price_egp,
-        stock: productData.stock,
+        subcategory: productData.subcategory || '', // Ensure subcategory is passed
+        name: displayName,
+        price: displayPrice,
+        price_egp: displayPrice,
+        stock: productType === 'Bundle' ? 999 : productData.stock, // Bundles usually have virtual stock
         status: productData.status,
         featured: productData.featured || false,
     };
 
     if (productType === 'Bundle') {
-        // Bundle specific fields
         Object.assign(finalProductDoc, {
             name_en: productData.bundleName,
             description_en: productData.bundleDescription,
             bundleName: productData.bundleName,
             bundleDescription: productData.bundleDescription,
+            bundlePrice: productData.bundlePrice,
+            bundleOriginalPrice: productData.bundleOriginalPrice,
             bundleItems: productData.bundleItems,
         });
     } else {
