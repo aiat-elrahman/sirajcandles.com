@@ -2,12 +2,11 @@ import mongoose from "mongoose";
 
 const bundleItemSchema = new mongoose.Schema({
   subProductName:   { type: String, required: true },
-  size:             { type: String, required: true },
-  allowedScents:    { type: String, required: true },
+  size:             { type: String, default: '' },
+  allowedScents:    { type: String, default: '' },
   linkedProductId:  { type: mongoose.Schema.Types.ObjectId, ref: 'Product', default: null },
   linkedProductName:{ type: String, default: '' },
-}, { _id: false });
-
+}, { _id: false })
 const productSchema = new mongoose.Schema(
   {
     name:   { type: String, required: true },
