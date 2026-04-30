@@ -7,7 +7,7 @@ import { fileURLToPath } from "url";
 import multer from "multer";
 import { v2 as cloudinary } from "cloudinary";
 import jwt from "jsonwebtoken";
-import csv from 'csv-parse/sync';
+import Product from './models/Product.js';
 import productRoutes from "./routes/productRoutes.js";
 import orderRoutes from "./routes/orderRoutes.js";
 import shippingRoutes from './routes/shippingRoutes.js';
@@ -255,38 +255,7 @@ app.get('/api/admin/verify', authenticateToken, (req, res) => {
 
 /////////////csv import 
 
-app.post('/api/products/bulk', authenticateToken, express.json(), async (req, res) => {
-    try {
-        const { products } = req.body;
-        const results = [];
-        for (const p of products) {
-            const variants = p.variants ? p.variants.split(',').map(v => {
-                const [variantName, price, stock] = v.trim().split(':');
-                return { variantName: variantName?.trim(), variantType: 'scent', price: parseFloat(price) || 0, stock: parseInt(stock) || 0 };
-            }) : [];
-            
-            const doc = {
-                productType: p.productType || 'Single',
-                name: p.name_en, name_en: p.name_en,
-                price: parseFloat(p.price_egp), price_egp: parseFloat(p.price_egp),
-                category: p.category, subcategory: p.subcategory || '',
-                stock: parseInt(p.stock) || 0,
-                status: p.status || 'Active',
-                featured: p.featured === 'true',
-                description_en: p.description_en || '',
-                scentOptions: p.scentOptions || '',
-                sizeOptions: p.sizeOptions || '',
-                imagePaths: p.imagePaths ? p.imagePaths.split('|') : [],
-                variants: variants
-            };
-            const created = await Product.create(doc);
-            results.push(created._id);
-        }
-        res.json({ success: true, created: results.length });
-    } catch (err) {
-        res.status(500).json({ message: err.message });
-    }
-});
+
 app.post('/api/products/bulk', authenticateToken, async (req, res) => {
     try {
         const { products } = req.body;
