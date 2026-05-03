@@ -254,14 +254,21 @@ export const updateProduct = async (req, res) => {
             return res.status(404).json({ message: 'Product not found.' });
         }
 
-        // --- Handle Image Updates ---
-        let updatedImagePaths = product.imagePaths || [];
+       // WITH this:
+const productData = JSON.parse(req.body.productData);
 
-        if (req.files && req.files.length > 0) {
-            const uploadPromises = req.files.map(file => uploadToCloudinary(file));
-            const newImagePaths = await Promise.all(uploadPromises);
-            updatedImagePaths = [...updatedImagePaths, ...newImagePaths];
-        }
+// Use the kept images sent from frontend (after user deleted some)
+let updatedImagePaths = productData.existingImagePaths || [];
+
+// Upload any new files and add them
+if (req.files && req.files.length > 0) {
+    const uploadPromises = req.files.map(file => uploadToCloudinary(file));
+    const newImagePaths = await Promise.all(uploadPromises);
+    updatedImagePaths = [...updatedImagePaths, ...newImagePaths];
+}
+
+// Enforce max 5
+updatedImagePaths = updatedImagePaths.slice(0, 5);
 
         // --- Handle Text Data Update ---
         if (!req.body.productData) {
