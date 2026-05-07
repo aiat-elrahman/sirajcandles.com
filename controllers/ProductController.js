@@ -254,36 +254,34 @@ export const updateProduct = async (req, res) => {
             return res.status(404).json({ message: 'Product not found.' });
         }
 
-       // WITH this:
-const productData = JSON.parse(req.body.productData);
-
-// Use the kept images sent from frontend (after user deleted some)
-let updatedImagePaths = productData.existingImagePaths || [];
-
-// Upload any new files and add them
-if (req.files && req.files.length > 0) {
-    const uploadPromises = req.files.map(file => uploadToCloudinary(file));
-    const newImagePaths = await Promise.all(uploadPromises);
-    updatedImagePaths = [...updatedImagePaths, ...newImagePaths];
-}
-
-// Enforce max 5
-updatedImagePaths = updatedImagePaths.slice(0, 5);
-
-        // --- Handle Text Data Update ---
         if (!req.body.productData) {
             return res.status(400).json({ message: 'Product data (text fields) is missing for update.' });
         }
+
+        // Parse productData ONCE at the top
         const productData = JSON.parse(req.body.productData);
         const { productType } = productData;
 
-        // Build update fields using the same helper function
+        // Use kept images from frontend (after user deleted some)
+        let updatedImagePaths = productData.existingImagePaths || [];
+
+        // Upload any new files and append them
+        if (req.files && req.files.length > 0) {
+            const uploadPromises = req.files.map(file => uploadToCloudinary(file));
+            const newImagePaths = await Promise.all(uploadPromises);
+            updatedImagePaths = [...updatedImagePaths, ...newImagePaths];
+        }
+
+        // Enforce max 5 images
+        updatedImagePaths = updatedImagePaths.slice(0, 5);
+
+        // Build update fields
         const updateFields = buildProductData(productData, productType, updatedImagePaths);
 
-        // Add unset operations for type switching
+        // Unset fields that don't belong to this product type
         if (productType === 'Bundle') {
             updateFields.$unset = {
-                scents: "", size: "", formattedDescription: "", 
+                scents: "", size: "", formattedDescription: "",
                 scentOptions: "", sizeOptions: "", weightOptions: "", typeOptions: "", shapeOptions: "",
                 burnTime: "", wickType: "", coverageSpace: "",
                 skinType: "", keyIngredients: "",
@@ -294,8 +292,8 @@ updatedImagePaths = updatedImagePaths.slice(0, 5);
                 fizzySpecs: ""
             };
         } else {
-            updateFields.$unset = { 
-                bundleName: "", bundleDescription: "", bundleItems: "" 
+            updateFields.$unset = {
+                bundleName: "", bundleDescription: "", bundleItems: ""
             };
         }
 
@@ -319,7 +317,6 @@ updatedImagePaths = updatedImagePaths.slice(0, 5);
         });
     }
 };
-
 /**
  * Endpoint: DELETE /api/products/:id (Admin Delete action)
  */
