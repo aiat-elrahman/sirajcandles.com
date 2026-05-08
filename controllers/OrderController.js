@@ -48,12 +48,15 @@ export const createOrder = async (req, res) => {
             await product.save({ session });
             calculatedSubtotal += priceToUse * item.quantity;
 
+            // Capture whichever field the frontend used for the chosen scent/variant
+            const chosenVariant = item.variantName || item.variant || item.scent || item.selectedVariant || item.selectedScent || null;
+
             finalItems.push({
                 productId: product._id,
                 name: product.productType === 'Bundle' ? product.bundleName : product.name_en,
                 quantity: item.quantity,
                 price: priceToUse,
-                variantName: item.variantName || null,
+                variantName: chosenVariant,
                 customization: item.customization || []
             });
         }
