@@ -5,6 +5,7 @@ const orderItemSchema = new mongoose.Schema({
   name: { type: String, required: true },
   quantity: { type: Number, required: true },
   price: { type: Number, required: true },
+  variantName: { type: String, default: null },   // ← scent / size / variant chosen by customer
   customization: { type: [String], default: null },
 });
 
