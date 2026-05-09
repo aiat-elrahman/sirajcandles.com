@@ -19,6 +19,9 @@ import heroRoutes from './routes/heroRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 import HeroSettings from './models/HeroSettings.js';
 import reviewRoutes from './routes/reviewRoutes.js';
+import siteSettingsRoutes from './routes/siteSettingsRoutes.js';
+import storeRoutes from './routes/storeRoutes.js';
+
 dotenv.config();
 
 const app = express();
@@ -117,7 +120,8 @@ app.use('/api/shipping-rates', shippingRoutes);
 app.use('/api/discounts', discountRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/reviews', reviewRoutes);
-
+app.use('/api/site-settings', siteSettingsRoutes);
+app.use('/api/stores', storeRoutes);
 // ============================================
 // HEALTH CHECK
 // ============================================
