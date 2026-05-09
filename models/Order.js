@@ -5,7 +5,7 @@ const orderItemSchema = new mongoose.Schema({
   name: { type: String, required: true },
   quantity: { type: Number, required: true },
   price: { type: Number, required: true },
-  variantName: { type: String, default: null },   // ← scent / size / variant chosen by customer
+  variantName: { type: String, default: null },
   customization: { type: [String], default: null },
 });
 
@@ -24,6 +24,12 @@ const orderSchema = new mongoose.Schema(
     items: [orderItemSchema],
     subtotal: { type: Number, required: true },
     shippingFee: { type: Number, required: true },
+    
+    // --- NEW: Added Discount Fields ---
+    discountAmount: { type: Number, default: 0 },
+    discountCode: { type: String, default: null },
+    // ----------------------------------
+
     totalAmount: { type: Number, required: true },
     paymentMethod: { type: String, required: true, default: 'Cash on Delivery' },
     status: { type: String, required: true, default: 'Pending' },
