@@ -282,8 +282,9 @@ app.post('/api/products/bulk', authenticateToken, async (req, res) => {
                 featured: p.featured === 'true',
                 description_en: p.description_en || '',
                 bundleDescription: p.bundleDescription || '',
-                scentOptions: p.scentOptions || '',
-                sizeOptions: p.sizeOptions || '',
+                scentOptions: p.scentOptions ? p.scentOptions.replace(/\|/g, ', ') : '',
+                sizeOptions: p.sizeOptions ? p.sizeOptions.replace(/\|/g, ', ') : '',
+                weightOptions: p.weightOptions ? p.weightOptions.replace(/\|/g, ', ') : '',
                 imagePaths: [],
                 variants: variants
             };
