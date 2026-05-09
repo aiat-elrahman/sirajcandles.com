@@ -1,26 +1,27 @@
 import Order from "../models/Order.js";
 import Product from "../models/Product.js";
-import mongoose from "mongoose";
-import Discount from "../models/Discount.js"; // Added missing import
+import Discount from "../models/Discount.js";
 
-// --- 1. CREATE ORDER (User Side) ---
-// --- 1. CREATE ORDER (User Side) ---
 // --- 1. CREATE ORDER (User Side) ---
 export const createOrder = async (req, res) => {
-    const session = await mongoose.startSession();
-    session.startTransaction();
-
     try {
+        console.log("--- INCOMING ORDER REQUEST ---", req.body);
         const { customerInfo, items, paymentMethod, discountCode, discountAmount, shippingFee } = req.body;
 
-        if (!items || items.length === 0) throw new Error("No order items provided");
+        if (!items || items.length === 0) {
+            console.error("Order failed: No items provided");
+            return res.status(400).json({ message: "No order items provided" });
+        }
 
         let calculatedSubtotal = 0;
         const finalItems = [];
 
         for (const item of items) {
-            const product = await Product.findById(item.productId).session(session);
-            if (!product) throw new Error(`Product not found: ${item.name}`);
+            const product = await Product.findById(item.productId);
+            if (!product) {
+                console.error(`Order failed: Product not found (${item.name})`);
+                return res.status(404).json({ message: `Product not found: ${item.name}` });
+            }
 
             let priceToUse = product.price_egp;
             let variantFound = false;
@@ -30,7 +31,8 @@ export const createOrder = async (req, res) => {
                 const variant = product.variants.find(v => v.variantName === item.variantName);
                 if (variant) {
                     if (variant.stock < item.quantity) {
-                        throw new Error(`Insufficient stock for ${product.name} (${item.variantName}).`);
+                        console.error(`Order failed: Insufficient stock for variant ${item.variantName}`);
+                        return res.status(400).json({ message: `Insufficient stock for ${product.name} (${item.variantName}).` });
                     }
                     variant.stock -= item.quantity;
                     priceToUse = variant.price; 
@@ -41,23 +43,22 @@ export const createOrder = async (req, res) => {
             // --- Main Stock Logic ---
             if (!variantFound) {
                 if (product.stock < item.quantity) {
-                    throw new Error(`Insufficient stock for ${product.name}.`);
+                    console.error(`Order failed: Insufficient stock for product ${product.name}`);
+                    return res.status(400).json({ message: `Insufficient stock for ${product.name}.` });
                 }
                 product.stock -= item.quantity;
             }
 
-            await product.save({ session });
+            await product.save();
             calculatedSubtotal += priceToUse * item.quantity;
 
-            // --- NEW: Deduct Inventory from Linked Bundle Items ---
+            // --- Deduct Inventory from Linked Bundle Items ---
             if (product.productType === 'Bundle' && product.bundleItems && product.bundleItems.length > 0) {
                 for (const bItem of product.bundleItems) {
                     if (bItem.linkedProductId) {
-                        const linkedProd = await Product.findById(bItem.linkedProductId).session(session);
+                        const linkedProd = await Product.findById(bItem.linkedProductId);
                         if (linkedProd) {
                             let linkedVariantDeducted = false;
-                            
-                            // Try to match the customer's chosen customization scent to a linked product variant
                             if (item.customization && item.customization.length > 0) {
                                 for (const custString of item.customization) {
                                     for (const v of linkedProd.variants) {
@@ -70,17 +71,14 @@ export const createOrder = async (req, res) => {
                                     if (linkedVariantDeducted) break;
                                 }
                             }
-                            
-                            // Fallback: Deduct from the main linked product stock
                             if (!linkedVariantDeducted) {
                                 linkedProd.stock -= item.quantity;
                             }
-                            await linkedProd.save({ session });
+                            await linkedProd.save();
                         }
                     }
                 }
             }
-            // ------------------------------------------------------
 
             const chosenVariant = item.variantName || item.variant || item.scent || item.selectedVariant || item.selectedScent || null;
 
@@ -94,10 +92,18 @@ export const createOrder = async (req, res) => {
             });
         }
 
-        const finalShippingFee = Number(shippingFee) || 0;
+        // --- Shipping & Discount Enforcement ---
+        let finalShippingFee = 0;
+        if (calculatedSubtotal >= 2000) {
+            finalShippingFee = 0;
+        } else {
+            finalShippingFee = Number(shippingFee) || 50;
+        }
+        
         const finalDiscountAmount = Number(discountAmount) || 0;
         const totalAmount = Math.max(0, calculatedSubtotal + finalShippingFee - finalDiscountAmount);
 
+        console.log("Saving order to DB...");
         const order = new Order({
             customerInfo,
             items: finalItems,
@@ -110,19 +116,17 @@ export const createOrder = async (req, res) => {
             status: 'Pending',
         });
 
-        const createdOrder = await order.save({ session });
-        await session.commitTransaction();
-        session.endSession();
+        const createdOrder = await order.save();
+        console.log("✅ ORDER SAVED SUCCESSFULLY! ID:", createdOrder._id);
 
         res.status(201).json({ message: "Order created successfully", orderId: createdOrder._id });
 
     } catch (error) {
-        await session.abortTransaction();
-        session.endSession();
-        console.error("Order Error:", error);
+        console.error("❌ CRITICAL ORDER ERROR:", error);
         res.status(500).json({ message: error.message });
     }
 };
+
 // --- 2. GET ALL ORDERS (Admin Side) ---
 export const getAllOrders = async (req, res) => {
     try {
