@@ -5,7 +5,7 @@ import {
     getOrderById,      // <-- Import new function
     updateOrderStatus  // <-- Import new function
 } from "../controllers/OrderController.js";
-
+import Order from "../models/Order.js";
 const router = express.Router();
 
 // POST /api/orders - Create a new order (from frontend checkout)
