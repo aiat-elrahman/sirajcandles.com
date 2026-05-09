@@ -5,12 +5,12 @@ import Discount from "../models/Discount.js"; // Added missing import
 
 // --- 1. CREATE ORDER (User Side) ---
 // --- 1. CREATE ORDER (User Side) ---
+// --- 1. CREATE ORDER (User Side) ---
 export const createOrder = async (req, res) => {
     const session = await mongoose.startSession();
     session.startTransaction();
 
     try {
-        // Extract shippingFee, discountCode, and discountAmount from frontend
         const { customerInfo, items, paymentMethod, discountCode, discountAmount, shippingFee } = req.body;
 
         if (!items || items.length === 0) throw new Error("No order items provided");
@@ -33,7 +33,7 @@ export const createOrder = async (req, res) => {
                         throw new Error(`Insufficient stock for ${product.name} (${item.variantName}).`);
                     }
                     variant.stock -= item.quantity;
-                    priceToUse = variant.price; // Use SERVER price
+                    priceToUse = variant.price; 
                     variantFound = true;
                 }
             }
@@ -49,7 +49,39 @@ export const createOrder = async (req, res) => {
             await product.save({ session });
             calculatedSubtotal += priceToUse * item.quantity;
 
-            // Capture whichever field the frontend used for the chosen scent/variant
+            // --- NEW: Deduct Inventory from Linked Bundle Items ---
+            if (product.productType === 'Bundle' && product.bundleItems && product.bundleItems.length > 0) {
+                for (const bItem of product.bundleItems) {
+                    if (bItem.linkedProductId) {
+                        const linkedProd = await Product.findById(bItem.linkedProductId).session(session);
+                        if (linkedProd) {
+                            let linkedVariantDeducted = false;
+                            
+                            // Try to match the customer's chosen customization scent to a linked product variant
+                            if (item.customization && item.customization.length > 0) {
+                                for (const custString of item.customization) {
+                                    for (const v of linkedProd.variants) {
+                                        if (custString.includes(v.variantName) && v.stock >= item.quantity) {
+                                            v.stock -= item.quantity;
+                                            linkedVariantDeducted = true;
+                                            break;
+                                        }
+                                    }
+                                    if (linkedVariantDeducted) break;
+                                }
+                            }
+                            
+                            // Fallback: Deduct from the main linked product stock
+                            if (!linkedVariantDeducted) {
+                                linkedProd.stock -= item.quantity;
+                            }
+                            await linkedProd.save({ session });
+                        }
+                    }
+                }
+            }
+            // ------------------------------------------------------
+
             const chosenVariant = item.variantName || item.variant || item.scent || item.selectedVariant || item.selectedScent || null;
 
             finalItems.push({
@@ -62,10 +94,8 @@ export const createOrder = async (req, res) => {
             });
         }
 
-        // --- Trust the calculated numbers sent from the frontend fix ---
         const finalShippingFee = Number(shippingFee) || 0;
         const finalDiscountAmount = Number(discountAmount) || 0;
-
         const totalAmount = Math.max(0, calculatedSubtotal + finalShippingFee - finalDiscountAmount);
 
         const order = new Order({
@@ -73,8 +103,8 @@ export const createOrder = async (req, res) => {
             items: finalItems,
             subtotal: calculatedSubtotal,
             shippingFee: finalShippingFee,
-            discountAmount: finalDiscountAmount,     // <-- SAVE TO DB
-            discountCode: discountCode || null,      // <-- SAVE TO DB
+            discountAmount: finalDiscountAmount,
+            discountCode: discountCode || null,
             totalAmount,
             paymentMethod,
             status: 'Pending',
@@ -93,7 +123,6 @@ export const createOrder = async (req, res) => {
         res.status(500).json({ message: error.message });
     }
 };
-
 // --- 2. GET ALL ORDERS (Admin Side) ---
 export const getAllOrders = async (req, res) => {
     try {
