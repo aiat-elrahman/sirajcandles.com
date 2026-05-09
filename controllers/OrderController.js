@@ -4,13 +4,14 @@ import mongoose from "mongoose";
 import Discount from "../models/Discount.js"; // Added missing import
 
 // --- 1. CREATE ORDER (User Side) ---
+// --- 1. CREATE ORDER (User Side) ---
 export const createOrder = async (req, res) => {
     const session = await mongoose.startSession();
     session.startTransaction();
 
     try {
-        // Extract shippingFee from frontend
-        const { customerInfo, items, paymentMethod, discountCode, shippingFee } = req.body;
+        // Extract shippingFee, discountCode, and discountAmount from frontend
+        const { customerInfo, items, paymentMethod, discountCode, discountAmount, shippingFee } = req.body;
 
         if (!items || items.length === 0) throw new Error("No order items provided");
 
@@ -61,33 +62,19 @@ export const createOrder = async (req, res) => {
             });
         }
 
-        // --- Shipping Logic (Dynamic) ---
-        // If subtotal > 2000, free shipping. Otherwise use city rate (or default 50)
-        let finalShippingFee = 0;
-        if (calculatedSubtotal >= 2000) {
-            finalShippingFee = 0;
-        } else {
-            finalShippingFee = Number(shippingFee) || 50;
-        }
+        // --- Trust the calculated numbers sent from the frontend fix ---
+        const finalShippingFee = Number(shippingFee) || 0;
+        const finalDiscountAmount = Number(discountAmount) || 0;
 
-        // --- Discount Logic ---
-        let discountAmount = 0;
-        if (discountCode) {
-            const discount = await Discount.findOne({ code: discountCode.toUpperCase(), status: 'active' }).session(session);
-            if (discount) {
-                discountAmount = discount.type === 'percentage' 
-                    ? calculatedSubtotal * (discount.value / 100) 
-                    : discount.value;
-            }
-        }
-
-        const totalAmount = Math.max(0, calculatedSubtotal + finalShippingFee - discountAmount);
+        const totalAmount = Math.max(0, calculatedSubtotal + finalShippingFee - finalDiscountAmount);
 
         const order = new Order({
             customerInfo,
             items: finalItems,
             subtotal: calculatedSubtotal,
             shippingFee: finalShippingFee,
+            discountAmount: finalDiscountAmount,     // <-- SAVE TO DB
+            discountCode: discountCode || null,      // <-- SAVE TO DB
             totalAmount,
             paymentMethod,
             status: 'Pending',
