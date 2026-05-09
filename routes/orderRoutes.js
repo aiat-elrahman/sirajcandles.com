@@ -19,5 +19,15 @@ router.get("/:id", getOrderById);
 
 // PUT /api/orders/:id/status - Update order status (for admin)
 router.put("/:id/status", updateOrderStatus);
-
+// GET /api/orders/track/:phone - Track orders by phone (public)
+router.get("/track/:phone", async (req, res) => {
+    try {
+        const orders = await import('../models/Order.js').then(m => m.default.find({ 
+            "customerInfo.phone": req.params.phone 
+        }).sort({ createdAt: -1 }));
+        res.json(orders);
+    } catch (error) {
+        res.status(500).json({ message: "Error tracking orders" });
+    }
+});
 export default router;
