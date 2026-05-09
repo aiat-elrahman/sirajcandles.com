@@ -17,12 +17,26 @@ router.get("/", getAllOrders);
 // GET /api/orders/track/:phone - Public order tracking by phone
 router.get('/track/:phone', async (req, res) => {
     try {
-        const phone = req.params.phone.trim();
-        const orders = await Order.find({ 'customerInfo.phone': phone })
-            .sort({ createdAt: -1 })
-            .select('_id status totalAmount createdAt items shippingFee customerInfo.name');
+        // Normalize: strip +, spaces, dashes so 01012345678 and +201012345678 both work
+        const raw = decodeURIComponent(req.params.phone).trim();
+        const normalized = raw.replace(/[\s\-\+]/g, '');
+
+        // Build variants to search: local (01...) and international (201...)
+        const variants = [
+            normalized,
+            normalized.startsWith('2') ? normalized.slice(1) : '0' + normalized,
+            '+' + normalized
+        ];
+
+        const orders = await Order.find({
+            'customerInfo.phone': { $in: variants.map(v => new RegExp(v.replace(/\+/g, '\\+'), 'i')) }
+        })
+        .sort({ createdAt: -1 })
+        .select('_id status totalAmount createdAt items shippingFee customerInfo');
+
         res.json(orders);
     } catch (error) {
+        console.error('Tracking error:', error);
         res.status(500).json({ message: 'Failed to fetch orders.' });
     }
 });
