@@ -1,30 +1,53 @@
 import express from 'express';
 import mongoose from 'mongoose';
-import Bazaarsale from '../models/Bazaarsale.js';
+import BazaarSale from '../models/BazaarSale.js';
 import Product from '../models/Product.js';
 import { authenticateToken } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
-// GET all bazaar sales (admin) — supports ?day= filter
+// GET all bazaar sales with optional filters
 router.get('/', authenticateToken, async (req, res) => {
   try {
     const query = {};
+    if (req.query.eventId) query.eventId = req.query.eventId;
     if (req.query.day) query.bazaarDay = req.query.day;
-    const sales = await Bazaarsale.find(query).sort({ createdAt: -1 });
+    const sales = await BazaarSale.find(query).sort({ createdAt: -1 });
     res.json(sales);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
 
-// POST create a bazaar sale — deducts stock
+// GET list of unique events for menu selectors
+router.get('/events', authenticateToken, async (req, res) => {
+  try {
+    const events = await BazaarSale.aggregate([
+      {
+        $group: {
+          _id: "$eventId",
+          eventName: { $first: "$eventName" },
+          eventLocation: { $first: "$eventLocation" },
+          createdAt: { $min: "$createdAt" }
+        }
+      },
+      { $sort: { createdAt: -1 } }
+    ]);
+    res.json(events);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// POST create a bazaar sale & deduct stock safely
 router.post('/', authenticateToken, async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
   try {
-  const { customerName, customerPhone, items, orderDiscount, discountPct, paymentMethod, note, bazaarDay } = req.body;
-
+    const { 
+      eventId, eventName, eventLocation, customerName, customerPhone, 
+      items, orderDiscount, discountPct, paymentMethod, note, bazaarDay 
+    } = req.body;
 
     if (!items || items.length === 0) {
       await session.abortTransaction();
@@ -33,12 +56,16 @@ router.post('/', authenticateToken, async (req, res) => {
 
     let subtotal = 0;
     const finalItems = [];
+    const dateObj = new Date();
+    
+    const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const dayOfWeek = daysOfWeek[dateObj.getDay()];
+    const dayOfMonth = dateObj.getDate();
 
     for (const item of items) {
       const product = await Product.findById(item.productId).session(session);
       if (!product) throw new Error(`Product not found: ${item.productName}`);
 
-      // Deduct stock — variant or main stock
       if (item.variantName) {
         const variant = product.variants.find(v => v.variantName === item.variantName);
         if (variant) {
@@ -72,7 +99,10 @@ router.post('/', authenticateToken, async (req, res) => {
 
     const totalAmount = Math.max(0, subtotal - (orderDiscount || 0));
 
-    const sale = new Bazaarsale({
+    const sale = new BazaarSale({
+      eventId,
+      eventName,
+      eventLocation,
       customerName: customerName || 'Walk-in',
       customerPhone: customerPhone || '',
       items: finalItems,
@@ -83,6 +113,8 @@ router.post('/', authenticateToken, async (req, res) => {
       totalAmount,
       note: note || '',
       bazaarDay: bazaarDay || 'Day 1',
+      dayOfWeek,
+      dayOfMonth
     });
 
     await sale.save({ session });
@@ -97,7 +129,7 @@ router.post('/', authenticateToken, async (req, res) => {
   }
 });
 
-// DELETE a sale (admin — does NOT restore stock, intentional)
+// DELETE a sale record
 router.delete('/:id', authenticateToken, async (req, res) => {
   try {
     await BazaarSale.findByIdAndDelete(req.params.id);
