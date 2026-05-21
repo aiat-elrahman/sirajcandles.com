@@ -22,7 +22,7 @@ import reviewRoutes from './routes/reviewRoutes.js';
 import siteSettingsRoutes from './routes/siteSettingsRoutes.js';
 import storeRoutes from './routes/storeRoutes.js';
 import contentRoutes from './routes/contentRoutes.js';
-import bazaarRoutes from './routes/bazaarTEMEP.js';
+import bazaarRoutes from './routes/bazaarRoutes.js';
 
 dotenv.config();
 
