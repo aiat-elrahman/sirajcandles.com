@@ -309,32 +309,43 @@ app.post('/api/products/bulk', authenticateToken, async (req, res) => {
 // ============================================
 app.get('/api/admin/analytics', authenticateToken, async (req, res) => {
   try {
-    // Import Order and Product models (if not already imported)
     const Order = mongoose.model('Order');
     const Product = mongoose.model('Product');
+    const BazaarSale = mongoose.model('BazaarSale');
     
-    // Get total orders count
-    const totalOrders = await Order.countDocuments();
-    
-    // Get total revenue
-    const revenueResult = await Order.aggregate([
+    // Web Order Calculations
+    const webOrdersCount = await Order.countDocuments();
+    const webRevenueResult = await Order.aggregate([
       { $match: { status: { $ne: 'cancelled' } } },
       { $group: { _id: null, total: { $sum: '$totalAmount' } } }
     ]);
-    const totalRevenue = revenueResult[0]?.total || 0;
+    const webRevenue = webRevenueResult[0]?.total || 0;
+
+    // Bazaar System Aggregations
+    const bazaarOrdersCount = await BazaarSale.countDocuments();
+    const bazaarRevenueResult = await BazaarSale.aggregate([
+      { $group: { _id: null, total: { $sum: '$totalAmount' } } }
+    ]);
+    const bazaarRevenue = bazaarRevenueResult[0]?.total || 0;
     
-    // Get total products count
+    // Vault Split Cash vs InstaPay totals across all bazaar sessions
+    const vaultSplit = await BazaarSale.aggregate([
+      { $group: { _id: "$paymentMethod", total: { $sum: "$totalAmount" } } }
+    ]);
+    
+    const cashVault = vaultSplit.find(v => v._id === 'Cash')?.total || 0;
+    const instapayVault = vaultSplit.find(v => v._id === 'InstaPay')?.total || 0;
+
+    const totalOrders = webOrdersCount + bazaarOrdersCount;
+    const totalRevenue = webRevenue + bazaarRevenue;
     const totalProducts = await Product.countDocuments();
     
-    // Get unique customers count (based on email)
     const customersResult = await Order.aggregate([
       { $group: { _id: '$customerInfo.email' } },
       { $count: 'count' }
     ]);
     const totalCustomers = customersResult[0]?.count || 0;
     
-    // Calculate conversion rate (simple calculation based on orders vs unique visitors)
-    // You'll need to implement proper visitor tracking for accurate rates
     const conversionRate = totalOrders > 0 && totalCustomers > 0 
       ? ((totalOrders / totalCustomers) * 100).toFixed(1) 
       : 0;
@@ -345,18 +356,17 @@ app.get('/api/admin/analytics', authenticateToken, async (req, res) => {
       totalProducts,
       totalCustomers,
       conversionRate: parseFloat(conversionRate),
-      abandonedCart: 0 // You'll need to implement cart abandonment tracking
+      abandonedCart: 0,
+      bazaarRevenue,
+      webRevenue,
+      cashVault,
+      instapayVault
     });
   } catch (error) {
     console.error('Analytics error:', error);
-    // Return default values if models aren't available yet
     res.json({
-      totalOrders: 0,
-      totalRevenue: 0,
-      totalProducts: 0,
-      totalCustomers: 0,
-      conversionRate: 0,
-      abandonedCart: 0
+      totalOrders: 0, totalRevenue: 0, totalProducts: 0, totalCustomers: 0, conversionRate: 0, abandonedCart: 0,
+      bazaarRevenue: 0, webRevenue: 0, cashVault: 0, instapayVault: 0
     });
   }
 });
