@@ -311,7 +311,7 @@ app.get('/api/admin/analytics', authenticateToken, async (req, res) => {
   try {
     const Order = mongoose.model('Order');
     const Product = mongoose.model('Product');
-    const BazaarSale = mongoose.model('BazaarSale');
+    const Bazaarsale = mongoose.model('Bazaarsale');
     
     // Web Order Calculations
     const webOrdersCount = await Order.countDocuments();
@@ -322,14 +322,14 @@ app.get('/api/admin/analytics', authenticateToken, async (req, res) => {
     const webRevenue = webRevenueResult[0]?.total || 0;
 
     // Bazaar System Aggregations
-    const bazaarOrdersCount = await BazaarSale.countDocuments();
-    const bazaarRevenueResult = await BazaarSale.aggregate([
+    const bazaarOrdersCount = await Bazaarsale.countDocuments();
+    const bazaarRevenueResult = await Bazaarsale.aggregate([
       { $group: { _id: null, total: { $sum: '$totalAmount' } } }
     ]);
     const bazaarRevenue = bazaarRevenueResult[0]?.total || 0;
     
     // Vault Split Cash vs InstaPay totals across all bazaar sessions
-    const vaultSplit = await BazaarSale.aggregate([
+    const vaultSplit = await Bazaarsale.aggregate([
       { $group: { _id: "$paymentMethod", total: { $sum: "$totalAmount" } } }
     ]);
     
