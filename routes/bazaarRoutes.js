@@ -11,7 +11,7 @@ router.get('/', authenticateToken, async (req, res) => {
   try {
     const query = {};
     if (req.query.day) query.bazaarDay = req.query.day;
-    const sales = await BazaarSale.find(query).sort({ createdAt: -1 });
+    const sales = await Bazaarsale.find(query).sort({ createdAt: -1 });
     res.json(sales);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -72,7 +72,7 @@ router.post('/', authenticateToken, async (req, res) => {
 
     const totalAmount = Math.max(0, subtotal - (orderDiscount || 0));
 
-    const sale = new BazaarSale({
+    const sale = new Bazaarsale({
       customerName: customerName || 'Walk-in',
       customerPhone: customerPhone || '',
       items: finalItems,
