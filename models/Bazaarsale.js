@@ -12,9 +12,9 @@ const bazaarItemSchema = new mongoose.Schema({
 }, { _id: false });
 
 const bazaarSaleSchema = new mongoose.Schema({
-  eventId:         { type: String, required: true }, // Links directly to a unique Event ID
-  eventName:       { type: String, required: true }, // e.g., "Spring Design Bazaar"
-  eventLocation:   { type: String, required: true }, // e.g., "Maadi Camp"
+  eventId:         { type: String },
+eventName:       { type: String },
+eventLocation:   { type: String },// e.g., "Maadi Camp"
   customerName:    { type: String, default: 'Walk-in' },
   customerPhone:   { type: String, default: '' },
   items:           [bazaarItemSchema],
