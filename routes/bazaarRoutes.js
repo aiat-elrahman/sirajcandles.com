@@ -1,6 +1,6 @@
 import express from 'express';
 import mongoose from 'mongoose';
-import BazaarSale from '../models/BazaarSale.js';
+import Bazaarsale from '../models/BazaarSale.js';
 import Product from '../models/Product.js';
 import { authenticateToken } from '../middleware/authMiddleware.js';
 
