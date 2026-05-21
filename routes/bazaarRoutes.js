@@ -45,9 +45,14 @@ router.post('/', authenticateToken, async (req, res) => {
   session.startTransaction();
   try {
     const { 
-      eventId, eventName, eventLocation, customerName, customerPhone, 
-      items, orderDiscount, discountPct, paymentMethod, note, bazaarDay 
-    } = req.body;
+  eventId, eventName, eventLocation, customerName, customerPhone, 
+  items, orderDiscount, discountPct, paymentMethod, note, bazaarDay 
+} = req.body;
+
+// Provide defaults if missing
+const finalEventId = eventId || 'walkin';
+const finalEventName = eventName || 'Bazaar Sale';
+const finalEventLocation = eventLocation || 'On-site';
 
     if (!items || items.length === 0) {
       await session.abortTransaction();
@@ -99,10 +104,10 @@ router.post('/', authenticateToken, async (req, res) => {
 
     const totalAmount = Math.max(0, subtotal - (orderDiscount || 0));
 
-    const sale = new Bazaarsale({
-      eventId,
-      eventName,
-      eventLocation,
+  const sale = new Bazaarsale({
+  eventId: finalEventId,
+  eventName: finalEventName,
+  eventLocation: finalEventLocation,
       customerName: customerName || 'Walk-in',
       customerPhone: customerPhone || '',
       items: finalItems,
