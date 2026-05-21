@@ -1,6 +1,6 @@
 import express from 'express';
 import mongoose from 'mongoose';
-import BazaarSale from '../models/BazaarSale.js';
+import Bazaarsale from '../models/Bazaarsale.js';
 import Product from '../models/Product.js';
 import { authenticateToken } from '../middleware/authMiddleware.js';
 
@@ -12,7 +12,7 @@ router.get('/', authenticateToken, async (req, res) => {
     const query = {};
     if (req.query.eventId) query.eventId = req.query.eventId;
     if (req.query.day) query.bazaarDay = req.query.day;
-    const sales = await BazaarSale.find(query).sort({ createdAt: -1 });
+    const sales = await Bazaarsale.find(query).sort({ createdAt: -1 });
     res.json(sales);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -22,7 +22,7 @@ router.get('/', authenticateToken, async (req, res) => {
 // GET list of unique events for menu selectors
 router.get('/events', authenticateToken, async (req, res) => {
   try {
-    const events = await BazaarSale.aggregate([
+    const events = await Bazaarsale.aggregate([
       {
         $group: {
           _id: "$eventId",
@@ -99,7 +99,7 @@ router.post('/', authenticateToken, async (req, res) => {
 
     const totalAmount = Math.max(0, subtotal - (orderDiscount || 0));
 
-    const sale = new BazaarSale({
+    const sale = new Bazaarsale({
       eventId,
       eventName,
       eventLocation,
@@ -132,7 +132,7 @@ router.post('/', authenticateToken, async (req, res) => {
 // DELETE a sale record
 router.delete('/:id', authenticateToken, async (req, res) => {
   try {
-    await BazaarSale.findByIdAndDelete(req.params.id);
+    await Bazaarsale.findByIdAndDelete(req.params.id);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ message: err.message });
