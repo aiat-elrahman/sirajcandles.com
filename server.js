@@ -22,6 +22,7 @@ import reviewRoutes from './routes/reviewRoutes.js';
 import siteSettingsRoutes from './routes/siteSettingsRoutes.js';
 import storeRoutes from './routes/storeRoutes.js';
 import contentRoutes from './routes/contentRoutes.js';
+import bazaarRoutes from './routes/bazaarRoutes.js';
 
 dotenv.config();
 
@@ -124,6 +125,7 @@ app.use('/api/reviews', reviewRoutes);
 app.use('/api/site-settings', siteSettingsRoutes);
 app.use('/api/stores', storeRoutes);
 app.use('/api/content', contentRoutes);
+app.use('/api/bazaar', bazaarRoutes);
 // ============================================
 // HEALTH CHECK
 // ============================================
