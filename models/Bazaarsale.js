@@ -30,4 +30,4 @@ const bazaarSaleSchema = new mongoose.Schema({
   saleDate:        { type: Date, default: Date.now },
 }, { timestamps: true });
 
-export default mongoose.model('BazaarSale', bazaarSaleSchema);
+export default mongoose.model('Bazaarsale', bazaarsaleSchema);
