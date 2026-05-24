@@ -147,10 +147,15 @@ router.post('/', authenticateToken, async (req, res) => {
       if (item.variantName) {
         const variant = product.variants?.find(v => v.variantName === item.variantName);
         if (variant) {
-          if (variant.stock < item.quantity)
-            throw new Error(`Not enough stock for ${product.name} (${item.variantName}). Available: ${variant.stock}`);
-          variant.stock -= item.quantity;
-        } else {
+    if (variant.stock < item.quantity) {
+        throw new Error(`Insufficient stock for ${product.name} (${item.variantName}).`);
+    }
+    variant.stock -= item.quantity;
+    priceToUse = variant.price;
+    variantFound = true;
+    // Also sync main stock so listing page reflects reality
+    product.stock = product.variants.reduce((sum, v) => sum + (v.stock || 0), 0);
+}else {
           if (product.stock < item.quantity)
             throw new Error(`Not enough stock for ${product.name}. Available: ${product.stock}`);
           product.stock -= item.quantity;
