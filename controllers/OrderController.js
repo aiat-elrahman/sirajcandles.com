@@ -30,14 +30,15 @@ export const createOrder = async (req, res) => {
             if (item.variantName) {
                 const variant = product.variants.find(v => v.variantName === item.variantName);
                 if (variant) {
-                    if (variant.stock < item.quantity) {
-                        console.error(`Order failed: Insufficient stock for variant ${item.variantName}`);
-                        return res.status(400).json({ message: `Insufficient stock for ${product.name} (${item.variantName}).` });
-                    }
-                    variant.stock -= item.quantity;
-                    priceToUse = variant.price; 
-                    variantFound = true;
-                }
+    if (variant.stock < item.quantity) {
+        throw new Error(`Insufficient stock for ${product.name} (${item.variantName}).`);
+    }
+    variant.stock -= item.quantity;
+    priceToUse = variant.price;
+    variantFound = true;
+    // Also sync main stock so listing page reflects reality
+    product.stock = product.variants.reduce((sum, v) => sum + (v.stock || 0), 0);
+}
             }
 
             // --- Main Stock Logic ---
