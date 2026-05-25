@@ -151,8 +151,7 @@ router.post('/', authenticateToken, async (req, res) => {
         throw new Error(`Insufficient stock for ${product.name} (${item.variantName}).`);
     }
     variant.stock -= item.quantity;
-    priceToUse = variant.price;
-    variantFound = true;
+    
     // Also sync main stock so listing page reflects reality
     product.stock = product.variants.reduce((sum, v) => sum + (v.stock || 0), 0);
 }else {
