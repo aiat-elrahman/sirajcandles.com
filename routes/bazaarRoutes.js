@@ -213,7 +213,88 @@ router.post('/', authenticateToken, async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 });
+// ── PUT – Edit an existing sale (add/remove items, change payment, move date) ──
+router.put('/:id', authenticateToken, async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+  try {
+    const sale = await Bazaarsale.findById(req.params.id).session(session);
+    if (!sale) return res.status(404).json({ message: 'Sale not found' });
 
+    const { items, paymentMethod, actualDate, customerName, customerPhone, note, orderDiscount, discountPct } = req.body;
+
+    // 1. Restore old stock (reverse previous deduction)
+    for (const oldItem of sale.items) {
+      const product = await Product.findById(oldItem.productId).session(session);
+      if (!product) continue;
+      if (oldItem.variantName) {
+        const variant = product.variants.find(v => v.variantName === oldItem.variantName);
+        if (variant) {
+          variant.stockOnline += oldItem.quantity;
+          variant.stock = variant.stockOnline;
+        } else {
+          product.stockOnline += oldItem.quantity;
+          product.stock = product.stockOnline;
+        }
+      } else {
+        product.stockOnline += oldItem.quantity;
+        product.stock = product.stockOnline;
+      }
+      await product.save({ session });
+    }
+
+    // 2. Apply new items and deduct new stock
+    let newSubtotal = 0;
+    const newItems = [];
+    for (const item of items) {
+      const product = await Product.findById(item.productId).session(session);
+      if (!product) throw new Error(`Product not found: ${item.productName}`);
+      if (item.variantName) {
+        const variant = product.variants.find(v => v.variantName === item.variantName);
+        if (variant) {
+          if (variant.stockOnline < item.quantity) throw new Error(`Insufficient stock for ${product.name} (${item.variantName})`);
+          variant.stockOnline -= item.quantity;
+          variant.stock = variant.stockOnline;
+        } else {
+          if (product.stockOnline < item.quantity) throw new Error(`Insufficient stock for ${product.name}`);
+          product.stockOnline -= item.quantity;
+          product.stock = product.stockOnline;
+        }
+      } else {
+        if (product.stockOnline < item.quantity) throw new Error(`Insufficient stock for ${product.name}`);
+        product.stockOnline -= item.quantity;
+        product.stock = product.stockOnline;
+      }
+      await product.save({ session });
+      const lineTotal = item.isFreeGift ? 0 : item.salePrice * item.quantity;
+      newSubtotal += lineTotal;
+      newItems.push(item);
+    }
+
+    const newTotal = Math.max(0, newSubtotal - (orderDiscount || 0));
+
+    // Update sale document
+    sale.items = newItems;
+    sale.subtotal = newSubtotal;
+    sale.totalAmount = newTotal;
+    sale.orderDiscount = orderDiscount || 0;
+    sale.discountPct = discountPct || 0;
+    sale.paymentMethod = paymentMethod || sale.paymentMethod;
+    sale.note = note !== undefined ? note : sale.note;
+    sale.customerName = customerName || sale.customerName;
+    sale.customerPhone = customerPhone || sale.customerPhone;
+    if (actualDate) sale.actualDate = new Date(actualDate);
+    await sale.save({ session });
+
+    await session.commitTransaction();
+    session.endSession();
+    res.json({ success: true, sale });
+  } catch (err) {
+    await session.abortTransaction();
+    session.endSession();
+    res.status(500).json({ message: err.message });
+  }
+});
 // ── DELETE a sale (does NOT restore stock) ────────────────────────────────────
 router.delete('/:id', authenticateToken, async (req, res) => {
   try {
