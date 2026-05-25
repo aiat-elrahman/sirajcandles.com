@@ -21,6 +21,7 @@
   },
   "homepage": "https://github.com/aiat-elrahman/sirajcandles.com#readme",
   "dependencies": {
+    "bcrypt": "^6.0.0",
     "cloudinary": "^1.41.3",
     "cors": "^2.8.5",
     "datauri": "^4.1.0",
