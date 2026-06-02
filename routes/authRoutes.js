@@ -25,5 +25,25 @@ router.post('/login', async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 });
-
+router.get('/setup-employees-temp', async (req, res) => {
+  try {
+    const password = await bcrypt.hash('store123', 10);
+    
+    await User.findOneAndUpdate(
+      { username: 'sabeel_employee' },
+      { password, role: 'sabeel_employee', store: 'sabeel' },
+      { upsert: true, new: true }
+    );
+    
+    await User.findOneAndUpdate(
+      { username: 'clouds_tex_employee' },
+      { password, role: 'clouds_tex_employee', store: 'clouds_tex' },
+      { upsert: true, new: true }
+    );
+    
+    res.send('✅ Employees created successfully!');
+  } catch (err) {
+    res.status(500).send('Error: ' + err.message);
+  }
+});
 export default router;
