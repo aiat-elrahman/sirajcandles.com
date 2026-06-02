@@ -2,7 +2,7 @@ import express from 'express';
 import mongoose from 'mongoose';
 import Bazaarsale from '../models/Bazaarsale.js';
 import Product from '../models/Product.js';
-import { authenticateToken } from '../middleware/authMiddleware.js';
+import { authenticateToken, isAdminUser, requireAdmin } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
@@ -22,6 +22,7 @@ router.get('/', authenticateToken, async (req, res) => {
     const query = {};
     if (req.query.eventId) query.eventId = req.query.eventId;
     if (req.query.day)     query.bazaarDay = req.query.day;
+    if (!isAdminUser(req.user)) query.location = req.user.store;
     const sales = await Bazaarsale.find(query).sort({ createdAt: -1 });
     res.json(sales);
   } catch (err) {
@@ -30,7 +31,7 @@ router.get('/', authenticateToken, async (req, res) => {
 });
 
 // ── GET unique events list (for selectors) ────────────────────────────────────
-router.get('/events', authenticateToken, async (req, res) => {
+router.get('/events', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const events = await Bazaarsale.aggregate([
       {
@@ -54,7 +55,7 @@ router.get('/events', authenticateToken, async (req, res) => {
 });
 
 // ── GET analytics for a specific event ───────────────────────────────────────
-router.get('/analytics', authenticateToken, async (req, res) => {
+router.get('/analytics', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const matchStage = req.query.eventId ? { $match: { eventId: req.query.eventId } } : { $match: {} };
     const byDay = await Bazaarsale.aggregate([
@@ -129,7 +130,12 @@ router.post('/', authenticateToken, async (req, res) => {
       location             // 'bazaar', 'sabeel', 'clouds_tex'
     } = req.body;
 
-    const finalLocation = location || 'bazaar';
+    const finalLocation = isAdminUser(req.user) ? (location || 'bazaar') : req.user.store;
+    if (!finalLocation) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(403).json({ message: 'Store employee account is missing a store assignment.' });
+    }
     const stockField = getStockField(finalLocation);
     const finalEventId = eventId || 'walkin';
     const finalEventName = eventName || 'Bazaar Sale';
@@ -236,7 +242,16 @@ router.put('/:id', authenticateToken, async (req, res) => {
   session.startTransaction();
   try {
     const sale = await Bazaarsale.findById(req.params.id).session(session);
-    if (!sale) return res.status(404).json({ message: 'Sale not found' });
+    if (!sale) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(404).json({ message: 'Sale not found' });
+    }
+    if (!isAdminUser(req.user) && sale.location !== req.user.store) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(403).json({ message: 'You can only edit sales for your own store.' });
+    }
 
     const { items, paymentMethod, actualDate, customerName, customerPhone, note, orderDiscount, discountPct } = req.body;
 
@@ -321,8 +336,12 @@ router.put('/:id', authenticateToken, async (req, res) => {
 // ── DELETE a sale (does NOT restore stock) ────────────────────────────────────
 router.delete('/:id', authenticateToken, async (req, res) => {
   try {
-    const deleted = await Bazaarsale.findByIdAndDelete(req.params.id);
-    if (!deleted) return res.status(404).json({ message: 'Sale not found' });
+    const sale = await Bazaarsale.findById(req.params.id);
+    if (!sale) return res.status(404).json({ message: 'Sale not found' });
+    if (!isAdminUser(req.user) && sale.location !== req.user.store) {
+      return res.status(403).json({ message: 'You can only delete sales for your own store.' });
+    }
+    await Bazaarsale.findByIdAndDelete(req.params.id);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ message: err.message });
