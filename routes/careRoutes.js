@@ -1,5 +1,6 @@
 import express from 'express';
 import CareInstruction from '../models/CareInstruction.js';
+import { authenticateToken, requireAdmin } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
@@ -29,7 +30,7 @@ router.get('/category/:category', async (req, res) => {
 });
 
 // POST create new care instruction
-router.post('/', async (req, res) => {
+router.post('/', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { category, careTitle, careContent } = req.body;
     
@@ -54,7 +55,7 @@ router.post('/', async (req, res) => {
 });
 
 // PUT update care instruction
-router.put('/:id', async (req, res) => {
+router.put('/:id', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { category, careTitle, careContent } = req.body;
     
@@ -80,7 +81,7 @@ router.put('/:id', async (req, res) => {
 });
 
 // DELETE care instruction
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const deletedCare = await CareInstruction.findByIdAndDelete(req.params.id);
     
