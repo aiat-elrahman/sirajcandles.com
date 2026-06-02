@@ -6,6 +6,16 @@ import { authenticateToken } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
+// Helper: get the correct stock field name based on location
+const getStockField = (location) => {
+  switch (location) {
+    case 'bazaar': return 'stockOnline';
+    case 'sabeel': return 'stockSabeel';
+    case 'clouds_tex': return 'stockCloudsTex';
+    default: return 'stockOnline';
+  }
+};
+
 // ── GET all bazaar sales (with optional filters) ──────────────────────────────
 router.get('/', authenticateToken, async (req, res) => {
   try {
@@ -28,6 +38,8 @@ router.get('/events', authenticateToken, async (req, res) => {
           _id:           '$eventId',
           eventName:     { $first: '$eventName' },
           eventLocation: { $first: '$eventLocation' },
+          startDate:     { $first: '$startDate' },
+          endDate:       { $first: '$endDate' },
           totalRevenue:  { $sum: '$totalAmount' },
           saleCount:     { $sum: 1 },
           createdAt:     { $min: '$createdAt' },
@@ -42,12 +54,9 @@ router.get('/events', authenticateToken, async (req, res) => {
 });
 
 // ── GET analytics for a specific event ───────────────────────────────────────
-// e.g. GET /api/bazaar/analytics?eventId=xxx
 router.get('/analytics', authenticateToken, async (req, res) => {
   try {
     const matchStage = req.query.eventId ? { $match: { eventId: req.query.eventId } } : { $match: {} };
-
-    // Revenue by day
     const byDay = await Bazaarsale.aggregate([
       matchStage,
       { $group: {
@@ -60,8 +69,6 @@ router.get('/analytics', authenticateToken, async (req, res) => {
       }},
       { $sort: { _id: 1 } }
     ]);
-
-    // Top products for this event
     const topProducts = await Bazaarsale.aggregate([
       matchStage,
       { $unwind: '$items' },
@@ -74,8 +81,6 @@ router.get('/analytics', authenticateToken, async (req, res) => {
       { $sort: { revenue: -1 } },
       { $limit: 20 }
     ]);
-
-    // Overall totals
     const totals = await Bazaarsale.aggregate([
       matchStage,
       { $group: {
@@ -90,9 +95,7 @@ router.get('/analytics', authenticateToken, async (req, res) => {
           customers:  { $addToSet: '$customerPhone' },
       }}
     ]);
-
     const t = totals[0] || {};
-
     res.json({
       byDay,
       topProducts: topProducts.map(p => ({ name: p._id, qty: p.qty, revenue: p.revenue, gifts: p.gifts })),
@@ -112,7 +115,7 @@ router.get('/analytics', authenticateToken, async (req, res) => {
   }
 });
 
-// ── POST create a bazaar sale & deduct stock ──────────────────────────────────
+// ── POST create a bazaar sale & deduct stock (supports location) ──────────────
 router.post('/', authenticateToken, async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -120,11 +123,16 @@ router.post('/', authenticateToken, async (req, res) => {
     const {
       eventId, eventName, eventLocation,
       customerName, customerPhone,
-      items, orderDiscount, discountPct, paymentMethod, note, bazaarDay
+      items, orderDiscount, discountPct, paymentMethod, note,
+      bazaarDay,           // expected: string date (YYYY-MM-DD) for the actual sale day
+      startDate, endDate,  // optional: for the first sale of an event
+      location             // 'bazaar', 'sabeel', 'clouds_tex'
     } = req.body;
 
-    const finalEventId       = eventId       || 'walkin';
-    const finalEventName     = eventName     || 'Bazaar Sale';
+    const finalLocation = location || 'bazaar';
+    const stockField = getStockField(finalLocation);
+    const finalEventId = eventId || 'walkin';
+    const finalEventName = eventName || 'Bazaar Sale';
     const finalEventLocation = eventLocation || 'On-site';
 
     if (!items || items.length === 0) {
@@ -134,37 +142,40 @@ router.post('/', authenticateToken, async (req, res) => {
 
     let subtotal = 0;
     const finalItems = [];
-    const now        = new Date();
+    const now = new Date();
     const daysOfWeek = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-    const dayOfWeek  = daysOfWeek[now.getDay()];
+    const dayOfWeek = daysOfWeek[now.getDay()];
     const dayOfMonth = now.getDate();
+
+    // Use provided bazaarDay (actual date) or fallback to today
+    const saleDate = bazaarDay ? new Date(bazaarDay) : now;
 
     for (const item of items) {
       const product = await Product.findById(item.productId).session(session);
       if (!product) throw new Error(`Product not found: ${item.productName}`);
 
-      // Deduct stock — variant first, fallback to main stock
       if (item.variantName) {
         const variant = product.variants?.find(v => v.variantName === item.variantName);
         if (variant) {
-    if (variant.stock < item.quantity) {
-        throw new Error(`Insufficient stock for ${product.name} (${item.variantName}).`);
-    }
-    variant.stock -= item.quantity;
-    
-    // Also sync main stock so listing page reflects reality
-    product.stock = product.variants.reduce((sum, v) => sum + (v.stock || 0), 0);
-}else {
-          if (product.stock < item.quantity)
-            throw new Error(`Not enough stock for ${product.name}. Available: ${product.stock}`);
-          product.stock -= item.quantity;
+          if (variant[stockField] < item.quantity) {
+            throw new Error(`Insufficient stock (${finalLocation}) for ${product.name} (${item.variantName}).`);
+          }
+          variant[stockField] -= item.quantity;
+          // Keep legacy stock field synced only for online (to avoid confusion)
+          if (finalLocation === 'bazaar') variant.stock = variant.stockOnline;
+          product.stock = product.variants.reduce((sum, v) => sum + (v[stockField] || 0), 0);
+        } else {
+          if (product[stockField] < item.quantity)
+            throw new Error(`Not enough stock (${finalLocation}) for ${product.name}. Available: ${product[stockField]}`);
+          product[stockField] -= item.quantity;
+          if (finalLocation === 'bazaar') product.stock = product.stockOnline;
         }
       } else {
-        if (product.stock < item.quantity)
-          throw new Error(`Not enough stock for ${product.name}. Available: ${product.stock}`);
-        product.stock -= item.quantity;
+        if (product[stockField] < item.quantity)
+          throw new Error(`Not enough stock (${finalLocation}) for ${product.name}. Available: ${product[stockField]}`);
+        product[stockField] -= item.quantity;
+        if (finalLocation === 'bazaar') product.stock = product.stockOnline;
       }
-
       await product.save({ session });
 
       const lineTotal = item.isFreeGift ? 0 : item.salePrice * item.quantity;
@@ -184,6 +195,7 @@ router.post('/', authenticateToken, async (req, res) => {
 
     const totalAmount = Math.max(0, subtotal - (orderDiscount || 0));
 
+    // Build sale document
     const sale = new Bazaarsale({
       eventId:       finalEventId,
       eventName:     finalEventName,
@@ -197,9 +209,13 @@ router.post('/', authenticateToken, async (req, res) => {
       paymentMethod: paymentMethod || 'Cash',
       totalAmount,
       note:          note     || '',
-      bazaarDay:     bazaarDay || 'Day 1',
+      bazaarDay:     saleDate.toISOString().split('T')[0], // store as YYYY-MM-DD
       dayOfWeek,
       dayOfMonth,
+      startDate:     startDate ? new Date(startDate) : null,
+      endDate:       endDate ? new Date(endDate) : null,
+      actualDate:    saleDate,
+      location:      finalLocation,
     });
 
     await sale.save({ session });
@@ -213,6 +229,7 @@ router.post('/', authenticateToken, async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 });
+
 // ── PUT – Edit an existing sale (add/remove items, change payment, move date) ──
 router.put('/:id', authenticateToken, async (req, res) => {
   const session = await mongoose.startSession();
@@ -223,6 +240,9 @@ router.put('/:id', authenticateToken, async (req, res) => {
 
     const { items, paymentMethod, actualDate, customerName, customerPhone, note, orderDiscount, discountPct } = req.body;
 
+    // Determine which stock field to use (based on the sale's original location)
+    const stockField = getStockField(sale.location || 'bazaar');
+
     // 1. Restore old stock (reverse previous deduction)
     for (const oldItem of sale.items) {
       const product = await Product.findById(oldItem.productId).session(session);
@@ -230,15 +250,15 @@ router.put('/:id', authenticateToken, async (req, res) => {
       if (oldItem.variantName) {
         const variant = product.variants.find(v => v.variantName === oldItem.variantName);
         if (variant) {
-          variant.stockOnline += oldItem.quantity;
-          variant.stock = variant.stockOnline;
+          variant[stockField] += oldItem.quantity;
+          if (stockField === 'stockOnline') variant.stock = variant.stockOnline;
         } else {
-          product.stockOnline += oldItem.quantity;
-          product.stock = product.stockOnline;
+          product[stockField] += oldItem.quantity;
+          if (stockField === 'stockOnline') product.stock = product.stockOnline;
         }
       } else {
-        product.stockOnline += oldItem.quantity;
-        product.stock = product.stockOnline;
+        product[stockField] += oldItem.quantity;
+        if (stockField === 'stockOnline') product.stock = product.stockOnline;
       }
       await product.save({ session });
     }
@@ -252,18 +272,18 @@ router.put('/:id', authenticateToken, async (req, res) => {
       if (item.variantName) {
         const variant = product.variants.find(v => v.variantName === item.variantName);
         if (variant) {
-          if (variant.stockOnline < item.quantity) throw new Error(`Insufficient stock for ${product.name} (${item.variantName})`);
-          variant.stockOnline -= item.quantity;
-          variant.stock = variant.stockOnline;
+          if (variant[stockField] < item.quantity) throw new Error(`Insufficient stock for ${product.name} (${item.variantName})`);
+          variant[stockField] -= item.quantity;
+          if (stockField === 'stockOnline') variant.stock = variant.stockOnline;
         } else {
-          if (product.stockOnline < item.quantity) throw new Error(`Insufficient stock for ${product.name}`);
-          product.stockOnline -= item.quantity;
-          product.stock = product.stockOnline;
+          if (product[stockField] < item.quantity) throw new Error(`Insufficient stock for ${product.name}`);
+          product[stockField] -= item.quantity;
+          if (stockField === 'stockOnline') product.stock = product.stockOnline;
         }
       } else {
-        if (product.stockOnline < item.quantity) throw new Error(`Insufficient stock for ${product.name}`);
-        product.stockOnline -= item.quantity;
-        product.stock = product.stockOnline;
+        if (product[stockField] < item.quantity) throw new Error(`Insufficient stock for ${product.name}`);
+        product[stockField] -= item.quantity;
+        if (stockField === 'stockOnline') product.stock = product.stockOnline;
       }
       await product.save({ session });
       const lineTotal = item.isFreeGift ? 0 : item.salePrice * item.quantity;
@@ -284,6 +304,8 @@ router.put('/:id', authenticateToken, async (req, res) => {
     sale.customerName = customerName || sale.customerName;
     sale.customerPhone = customerPhone || sale.customerPhone;
     if (actualDate) sale.actualDate = new Date(actualDate);
+    // If date changed, update bazaarDay (display date)
+    if (actualDate) sale.bazaarDay = new Date(actualDate).toISOString().split('T')[0];
     await sale.save({ session });
 
     await session.commitTransaction();
@@ -295,6 +317,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 });
+
 // ── DELETE a sale (does NOT restore stock) ────────────────────────────────────
 router.delete('/:id', authenticateToken, async (req, res) => {
   try {
