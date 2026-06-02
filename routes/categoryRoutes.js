@@ -4,6 +4,7 @@ import { v2 as cloudinary } from 'cloudinary';
 import multer from 'multer';
 import DatauriParser from 'datauri/parser.js';
 import path from 'path';
+import { authenticateToken, requireAdmin } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -31,7 +32,7 @@ router.get('/', async (req, res) => {
 });
 
 // POST create
-router.post('/', async (req, res) => {
+router.post('/', authenticateToken, requireAdmin, async (req, res) => {
     try {
         const category = new Category(req.body);
         res.status(201).json(await category.save());
@@ -42,7 +43,7 @@ router.post('/', async (req, res) => {
 });
 
 // PUT update
-router.put('/:id', async (req, res) => {
+router.put('/:id', authenticateToken, requireAdmin, async (req, res) => {
     try {
         const updated = await Category.findByIdAndUpdate(
             req.params.id, req.body, { new: true, runValidators: true }
@@ -53,7 +54,7 @@ router.put('/:id', async (req, res) => {
 });
 
 // DELETE
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', authenticateToken, requireAdmin, async (req, res) => {
     try {
         const deleted = await Category.findByIdAndDelete(req.params.id);
         if (!deleted) return res.status(404).json({ message: 'Category not found' });
@@ -63,7 +64,7 @@ router.delete('/:id', async (req, res) => {
 
 // POST upload subcategory image
 // Used by CategoryManager to upload an image for a specific subcategory
-router.post('/:id/subcategory-image', upload.single('image'), async (req, res) => {
+router.post('/:id/subcategory-image', authenticateToken, requireAdmin, upload.single('image'), async (req, res) => {
     try {
         if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
 
