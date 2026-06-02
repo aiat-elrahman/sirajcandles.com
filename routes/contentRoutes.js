@@ -1,6 +1,7 @@
 import express from 'express';
 import jwt from 'jsonwebtoken';
 import ContentPlan from '../models/ContentPlan.js';
+import { requireAdmin } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
@@ -26,8 +27,8 @@ const authenticateToken = (req, res, next) => {
   });
 };
 
-// Apply auth to every route in this file
-router.use(authenticateToken);
+// Apply admin auth to every route in this file
+router.use(authenticateToken, requireAdmin);
 
 // ─────────────────────────────────────────────
 // HELPER: standard error response
