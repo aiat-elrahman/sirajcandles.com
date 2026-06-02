@@ -1,7 +1,7 @@
 import express from 'express';
 
 import multer from 'multer';
-import { authenticateToken } from '../middleware/authMiddleware.js';
+import { authenticateToken, requireAdmin } from '../middleware/authMiddleware.js';
 import {
     createProduct,
     getAllProducts,
@@ -43,7 +43,7 @@ router.get('/:id/location-stock', authenticateToken, async (req, res) => {
 
 // ── NEW: Update location stock for a product (variant or simple) ──
 // ── Update location stock for a product (variant or simple) ──
-router.put('/:id/location-stock', authenticateToken, async (req, res) => {
+router.put('/:id/location-stock', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { variantName, online, sabeel, clouds_tex } = req.body;
     const product = await Product.findById(req.params.id);
@@ -82,12 +82,12 @@ router.get('/', getAllProducts);
 router.get('/:id', getProductById);
 
 // POST /api/products
-router.post('/', upload.array('productImages', 5), createProduct);
+router.post('/', authenticateToken, requireAdmin, upload.array('productImages', 5), createProduct);
 
 // PUT /api/products/:id - Update product
-router.put('/:id', upload.array('productImages', 5), updateProduct); // Allow images on update
+router.put('/:id', authenticateToken, requireAdmin, upload.array('productImages', 5), updateProduct); // Allow images on update
 
 // DELETE /api/products/:id - Delete product
-router.delete('/:id', deleteProduct);
+router.delete('/:id', authenticateToken, requireAdmin, deleteProduct);
 
 export default router;
