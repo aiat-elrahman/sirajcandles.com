@@ -9,6 +9,11 @@ const userSchema = new mongoose.Schema({
     required: true
   },
   store: { type: String, enum: ['sabeel', 'clouds_tex'], default: null }, // for employees
+  displayName: { type: String, default: '' },
+  isActive: { type: Boolean, default: true },
+  disabledAt: { type: Date, default: null },
+  disabledBy: { type: String, default: null },
+  lastLoginAt: { type: Date, default: null },
 }, { timestamps: true });
 
 export default mongoose.model('User', userSchema);
