@@ -6,13 +6,14 @@ import {
     updateOrderStatus  // <-- Import new function
 } from "../controllers/OrderController.js";
 import Order from "../models/Order.js";
+import { authenticateToken, requireAdmin } from "../middleware/authMiddleware.js";
 const router = express.Router();
 
 // POST /api/orders - Create a new order (from frontend checkout)
 router.post("/", createOrder);
 
 // GET /api/orders - Get all orders (for admin)
-router.get("/", getAllOrders);
+router.get("/", authenticateToken, requireAdmin, getAllOrders);
 
 // GET /api/orders/track/:phone - Public order tracking by phone
 router.get('/track/:phone', async (req, res) => {
@@ -41,10 +42,10 @@ router.get('/track/:phone', async (req, res) => {
     }
 });
 // GET /api/orders/:id - Get a single order by ID (for admin)
-router.get("/:id", getOrderById);
+router.get("/:id", authenticateToken, requireAdmin, getOrderById);
 
 // PUT /api/orders/:id/status - Update order status (for admin)
-router.put("/:id/status", updateOrderStatus);
+router.put("/:id/status", authenticateToken, requireAdmin, updateOrderStatus);
 // GET /api/orders/track/:phone - Track orders by phone (public)
 
 
