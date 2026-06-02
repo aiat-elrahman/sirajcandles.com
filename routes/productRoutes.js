@@ -42,6 +42,7 @@ router.get('/:id/location-stock', authenticateToken, async (req, res) => {
 });
 
 // ── NEW: Update location stock for a product (variant or simple) ──
+// ── Update location stock for a product (variant or simple) ──
 router.put('/:id/location-stock', authenticateToken, async (req, res) => {
   try {
     const { variantName, online, sabeel, clouds_tex } = req.body;
@@ -52,20 +53,24 @@ router.put('/:id/location-stock', authenticateToken, async (req, res) => {
       // update variant
       const variant = product.variants.find(v => v.variantName === variantName);
       if (!variant) return res.status(404).json({ error: 'Variant not found' });
-      if (online !== undefined) variant.stockOnline = online;
-      if (sabeel !== undefined) variant.stockSabeel = sabeel;
-      if (clouds_tex !== undefined) variant.stockCloudsTex = clouds_tex;
-      // optionally sync legacy stock field (if you still use it)
-      variant.stock = variant.stockOnline;
+      
+      // Force conversion to Numbers, fallback to existing stock if undefined
+      if (online !== undefined) variant.stockOnline = Number(online) || 0;
+      if (sabeel !== undefined) variant.stockSabeel = Number(sabeel) || 0;
+      if (clouds_tex !== undefined) variant.stockCloudsTex = Number(clouds_tex) || 0;
+      
+      variant.stock = variant.stockOnline; // sync legacy
     } else {
       // update simple product
-      if (online !== undefined) product.stockOnline = online;
-      if (sabeel !== undefined) product.stockSabeel = sabeel;
-      if (clouds_tex !== undefined) product.stockCloudsTex = clouds_tex;
+      if (online !== undefined) product.stockOnline = Number(online) || 0;
+      if (sabeel !== undefined) product.stockSabeel = Number(sabeel) || 0;
+      if (clouds_tex !== undefined) product.stockCloudsTex = Number(clouds_tex) || 0;
+      
       product.stock = product.stockOnline; // sync legacy
     }
+    
     await product.save();
-    res.json({ success: true });
+    res.json({ success: true, product });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
