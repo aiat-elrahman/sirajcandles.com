@@ -35,17 +35,22 @@ const buildProductData = (productData, productType, imagePaths) => {
     const displayName = productType === 'Bundle' ? productData.bundleName : productData.name_en;
     const displayPrice = productType === 'Bundle' ? productData.bundlePrice : productData.price_egp;
 
-    let finalProductDoc = {
+   let finalProductDoc = {
         productType: productType,
         imagePaths: imagePaths,
         category: productData.category,
-        subcategory: productData.subcategory || '', // Ensure subcategory is passed
+        subcategory: productData.subcategory || '', 
         name: displayName,
         price: displayPrice,
         price_egp: displayPrice,
-        stock: productType === 'Bundle' ? 999 : productData.stock, // Bundles usually have virtual stock
+        stock: productType === 'Bundle' ? 999 : productData.stock,
         status: productData.status,
         featured: productData.featured || false,
+        
+        // ADD THESE THREE LINES:
+        stockOnline: productData.stockOnline !== undefined ? Number(productData.stockOnline) : 0,
+        stockSabeel: productData.stockSabeel !== undefined ? Number(productData.stockSabeel) : 0,
+        stockCloudsTex: productData.stockCloudsTex !== undefined ? Number(productData.stockCloudsTex) : 0,
     };
 
     if (productType === 'Bundle') {
