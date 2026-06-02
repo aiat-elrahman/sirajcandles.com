@@ -1,6 +1,6 @@
 import express from 'express';
 import Store from '../models/Store.js';
-import { authenticateToken } from '../middleware/authMiddleware.js';
+import { authenticateToken, requireAdmin } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
@@ -17,7 +17,7 @@ router.get('/', async (req, res) => {
 });
 
 // POST create store (admin)
-router.post('/', authenticateToken, async (req, res) => {
+router.post('/', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const store = new Store(req.body);
     await store.save();
@@ -28,7 +28,7 @@ router.post('/', authenticateToken, async (req, res) => {
 });
 
 // PUT update store (admin)
-router.put('/:id', authenticateToken, async (req, res) => {
+router.put('/:id', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const store = await Store.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
     if (!store) return res.status(404).json({ message: 'Store not found' });
@@ -39,7 +39,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
 });
 
 // DELETE store (admin)
-router.delete('/:id', authenticateToken, async (req, res) => {
+router.delete('/:id', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const store = await Store.findByIdAndDelete(req.params.id);
     if (!store) return res.status(404).json({ message: 'Store not found' });
