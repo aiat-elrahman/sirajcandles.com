@@ -1,5 +1,6 @@
 import express from 'express';
 import ShippingRate from '../models/ShippingRate.js';
+import { authenticateToken, requireAdmin } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
@@ -29,7 +30,7 @@ router.get('/city/:city', async (req, res) => {
 });
 
 // POST create new shipping rate
-router.post('/', async (req, res) => {
+router.post('/', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { city, shippingFee } = req.body;
     
@@ -53,7 +54,7 @@ router.post('/', async (req, res) => {
 });
 
 // PUT update shipping rate
-router.put('/:id', async (req, res) => {
+router.put('/:id', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { city, shippingFee } = req.body;
     
@@ -78,7 +79,7 @@ router.put('/:id', async (req, res) => {
 });
 
 // DELETE shipping rate
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const deletedRate = await ShippingRate.findByIdAndDelete(req.params.id);
     
