@@ -9,7 +9,7 @@ import {
     updateProduct, // <-- Import update function
     deleteProduct  // <-- Import delete function
 } from '../controllers/ProductController.js';
-
+import Product from '../models/Product.js';
 const router = express.Router();
 
 const storage = multer.memoryStorage();
