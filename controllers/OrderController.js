@@ -30,24 +30,39 @@ export const createOrder = async (req, res) => {
             if (item.variantName) {
                 const variant = product.variants.find(v => v.variantName === item.variantName);
                 if (variant) {
-    if (variant.stock < item.quantity) {
-        throw new Error(`Insufficient stock for ${product.name} (${item.variantName}).`);
-    }
-    variant.stock -= item.quantity;
-    priceToUse = variant.price;
-    variantFound = true;
-    // Also sync main stock so listing page reflects reality
-    product.stock = product.variants.reduce((sum, v) => sum + (v.stock || 0), 0);
-}
+                    // Use stockOnline for online orders (fallback to stock if not set)
+                    const stockAvailable = variant.stockOnline !== undefined ? variant.stockOnline : variant.stock;
+                    if (stockAvailable < item.quantity) {
+                        throw new Error(`Insufficient stock for ${product.name} (${item.variantName}).`);
+                    }
+                    // Deduct from stockOnline (or stock if stockOnline not set)
+                    if (variant.stockOnline !== undefined) {
+                        variant.stockOnline -= item.quantity;
+                    } else {
+                        variant.stock -= item.quantity;
+                    }
+                    // Keep legacy stock synced for backward compatibility
+                    variant.stock = variant.stockOnline !== undefined ? variant.stockOnline : variant.stock;
+                    priceToUse = variant.price;
+                    variantFound = true;
+                    // Also sync main stock so listing page reflects reality
+                    product.stock = product.variants.reduce((sum, v) => sum + (v.stockOnline !== undefined ? v.stockOnline : v.stock), 0);
+                }
             }
 
-            // --- Main Stock Logic ---
+            // --- Main Stock Logic (no variant) ---
             if (!variantFound) {
-                if (product.stock < item.quantity) {
+                const stockAvailable = product.stockOnline !== undefined ? product.stockOnline : product.stock;
+                if (stockAvailable < item.quantity) {
                     console.error(`Order failed: Insufficient stock for product ${product.name}`);
                     return res.status(400).json({ message: `Insufficient stock for ${product.name}.` });
                 }
-                product.stock -= item.quantity;
+                if (product.stockOnline !== undefined) {
+                    product.stockOnline -= item.quantity;
+                } else {
+                    product.stock -= item.quantity;
+                }
+                product.stock = product.stockOnline !== undefined ? product.stockOnline : product.stock;
             }
 
             await product.save();
@@ -63,17 +78,29 @@ export const createOrder = async (req, res) => {
                             if (item.customization && item.customization.length > 0) {
                                 for (const custString of item.customization) {
                                     for (const v of linkedProd.variants) {
-                                        if (custString.includes(v.variantName) && v.stock >= item.quantity) {
-                                            v.stock -= item.quantity;
-                                            linkedVariantDeducted = true;
-                                            break;
+                                        if (custString.includes(v.variantName)) {
+                                            const linkedStock = v.stockOnline !== undefined ? v.stockOnline : v.stock;
+                                            if (linkedStock >= item.quantity) {
+                                                if (v.stockOnline !== undefined) v.stockOnline -= item.quantity;
+                                                else v.stock -= item.quantity;
+                                                if (v.stockOnline !== undefined) v.stock = v.stockOnline;
+                                                linkedVariantDeducted = true;
+                                                break;
+                                            }
                                         }
                                     }
                                     if (linkedVariantDeducted) break;
                                 }
                             }
                             if (!linkedVariantDeducted) {
-                                linkedProd.stock -= item.quantity;
+                                const linkedStock = linkedProd.stockOnline !== undefined ? linkedProd.stockOnline : linkedProd.stock;
+                                if (linkedStock >= item.quantity) {
+                                    if (linkedProd.stockOnline !== undefined) linkedProd.stockOnline -= item.quantity;
+                                    else linkedProd.stock -= item.quantity;
+                                    linkedProd.stock = linkedProd.stockOnline !== undefined ? linkedProd.stockOnline : linkedProd.stock;
+                                } else {
+                                    throw new Error(`Insufficient stock for bundle item ${bItem.subProductName}`);
+                                }
                             }
                             await linkedProd.save();
                         }
@@ -143,16 +170,14 @@ export const getAllOrders = async (req, res) => {
 export const getOrderById = async (req, res) => {
     try {
         const order = await Order.findById(req.params.id);
-
         if (!order) {
             return res.status(404).json({ message: 'Order not found.' });
         }
         res.status(200).json(order);
-
     } catch (error) {
         console.error('Error fetching order by ID:', error);
         if (error.kind === 'ObjectId') {
-             return res.status(400).json({ message: 'Invalid order ID format.' });
+            return res.status(400).json({ message: 'Invalid order ID format.' });
         }
         res.status(500).json({ message: 'Failed to fetch order details.', error: error.message });
     }
@@ -163,29 +188,23 @@ export const updateOrderStatus = async (req, res) => {
     try {
         const { status } = req.body;
         const allowedStatuses = ['Pending', 'Processing', 'Shipped', 'Delivered', 'Cancelled'];
-
         if (!status || !allowedStatuses.includes(status)) {
             return res.status(400).json({ message: `Invalid status. Must be one of: ${allowedStatuses.join(', ')}` });
         }
-
         const order = await Order.findById(req.params.id);
-
         if (!order) {
             return res.status(404).json({ message: 'Order not found.' });
         }
-
         order.status = status;
         const updatedOrder = await order.save();
-
         res.status(200).json({
             message: 'Order status updated successfully!',
             order: updatedOrder
         });
-
     } catch (error) {
         console.error('Error updating order status:', error);
-         if (error.kind === 'ObjectId') {
-             return res.status(400).json({ message: 'Invalid order ID format.' });
+        if (error.kind === 'ObjectId') {
+            return res.status(400).json({ message: 'Invalid order ID format.' });
         }
         res.status(500).json({ message: 'Failed to update order status.', error: error.message });
     }
