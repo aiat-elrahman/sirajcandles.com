@@ -1,6 +1,6 @@
 import express from 'express';
 import SiteSettings from '../models/SiteSettings.js';
-import { authenticateToken } from '../middleware/authMiddleware.js';
+import { authenticateToken, requireAdmin } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
@@ -18,7 +18,7 @@ router.get('/', async (req, res) => {
 });
 
 // PUT update site settings (admin only)
-router.put('/', authenticateToken, async (req, res) => {
+router.put('/', authenticateToken, requireAdmin, async (req, res) => {
   try {
     let settings = await SiteSettings.findOne();
     if (!settings) {
