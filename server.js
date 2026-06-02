@@ -24,6 +24,8 @@ import storeRoutes from './routes/storeRoutes.js';
 import contentRoutes from './routes/contentRoutes.js';
 import bazaarRoutes from './routes/bazaarRoutes.js';
 import authRoutes from './routes/authRoutes.js';
+import employeeRoutes from './routes/employeeRoutes.js';
+import { requireAdmin } from './middleware/authMiddleware.js';
 dotenv.config();
 
 const app = express();
@@ -66,7 +68,7 @@ app.use(
         callback(new Error("Not allowed by CORS policy."));
       }
     },
-    methods: ["GET", "POST", "PUT", "DELETE"],
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
     credentials: true,
   })
 );
@@ -127,6 +129,7 @@ app.use('/api/stores', storeRoutes);
 app.use('/api/content', contentRoutes);
 app.use('/api/bazaar', bazaarRoutes);
 app.use('/api/auth', authRoutes);
+app.use('/api/employees', employeeRoutes);
 // ============================================
 // HEALTH CHECK
 // ============================================
@@ -195,7 +198,7 @@ app.get('/api/settings/hero', async (req, res) => {
   }
 });
 
-app.post('/api/settings/hero', authenticateToken, async (req, res) => {
+app.post('/api/settings/hero', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { backgroundImage, buttonText, buttonLink, title, subtitle } = req.body;
     
@@ -265,7 +268,7 @@ app.get('/api/admin/verify', authenticateToken, (req, res) => {
 /////////////csv import 
 
 
-app.post('/api/products/bulk', authenticateToken, async (req, res) => {
+app.post('/api/products/bulk', authenticateToken, requireAdmin, async (req, res) => {
     try {
         const { products } = req.body;
         const results = [];
@@ -308,7 +311,7 @@ app.post('/api/products/bulk', authenticateToken, async (req, res) => {
 // ============================================
 // NEW: ANALYTICS ENDPOINT
 // ============================================
-app.get('/api/admin/analytics', authenticateToken, async (req, res) => {
+app.get('/api/admin/analytics', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const Order = mongoose.model('Order');
     const Product = mongoose.model('Product');
