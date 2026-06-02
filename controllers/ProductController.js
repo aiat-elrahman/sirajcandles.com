@@ -112,7 +112,48 @@ const buildProductData = (productData, productType, imagePaths) => {
 
     return finalProductDoc;
 };
+// --- BUNDLE STOCK CALCULATOR ---
+const calculateBundleStock = async (product) => {
+    if (!product.bundleItems || product.bundleItems.length === 0) return 0;
 
+    // Count how many of each linked product are required for ONE bundle
+    const reqCounts = {};
+    product.bundleItems.forEach(item => {
+        if (item.linkedProductId) {
+            reqCounts[item.linkedProductId.toString()] = (reqCounts[item.linkedProductId.toString()] || 0) + 1;
+        }
+    });
+
+    // If no products were linked, it has no real stock
+    if (Object.keys(reqCounts).length === 0) return 0;
+
+    let maxBundleStock = Infinity;
+
+    // Check the live database stock for each required item
+    for (const [linkedId, neededQty] of Object.entries(reqCounts)) {
+        try {
+            const linkedProduct = await Product.findById(linkedId);
+            if (linkedProduct) {
+                // Find total available online stock across all variants or base stock
+                const available = linkedProduct.variants && linkedProduct.variants.length > 0 
+                    ? linkedProduct.variants.reduce((sum, v) => sum + (v.stockOnline !== undefined ? v.stockOnline : v.stock), 0)
+                    : (linkedProduct.stockOnline !== undefined ? linkedProduct.stockOnline : linkedProduct.stock);
+                
+                // e.g., 9 available / 4 needed = 2 possible bundles
+                const possibleBundles = Math.floor(available / neededQty);
+                if (possibleBundles < maxBundleStock) {
+                    maxBundleStock = possibleBundles;
+                }
+            } else {
+                maxBundleStock = 0; // Linked product was deleted
+            }
+        } catch (err) {
+            maxBundleStock = 0;
+        }
+    }
+
+    return maxBundleStock === Infinity ? 0 : maxBundleStock;
+};
 // --- CONTROLLER FUNCTIONS ---
 
 /**
@@ -209,21 +250,34 @@ export const getAllProducts = async (req, res) => {
             sort: sortCriteria
         };
 
-        const products = await Product.find(query, null, options);
+       const products = await Product.find(query, null, options);
         const total = await Product.countDocuments(query);
+
+        // Calculate real stock for bundles before sending to frontend
+        const results = await Promise.all(products.map(async (p) => {
+            const productObj = { ...p._doc };
+            
+            if (productObj.productType === 'Bundle') {
+                const realStock = await calculateBundleStock(productObj);
+                productObj.stock = realStock;
+                productObj.stockOnline = realStock;
+            }
+            
+            return productObj;
+        }));
 
         res.json({
             total,
             page: parseInt(page),
             limit: parseInt(limit),
-            results: products.map(p => ({ ...p._doc })),
+            results
         });
 
     } catch (error) {
         console.error('Error fetching products:', error);
         res.status(500).json({ message: 'Failed to fetch products.' });
     }
-};
+}; 
 
 /**
  * Endpoint: GET /api/products/:id (Frontend detail & Admin Edit)
@@ -236,7 +290,16 @@ export const getProductById = async (req, res) => {
             return res.status(404).json({ message: 'Product not found.' });
         }
 
-        res.json({ ...product._doc });
+        const productObj = { ...product._doc };
+
+        // Calculate real stock if it is a bundle
+        if (productObj.productType === 'Bundle') {
+            const realStock = await calculateBundleStock(productObj);
+            productObj.stock = realStock;
+            productObj.stockOnline = realStock;
+        }
+
+        res.json(productObj);
 
     } catch (error) {
         console.error('Error fetching product by ID:', error);
