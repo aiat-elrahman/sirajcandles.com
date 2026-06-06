@@ -1,6 +1,6 @@
 import express from 'express';
 import HeroSettings from '../models/HeroSettings.js';
-import { authenticateToken } from '../middleware/authMiddleware.js';
+import { authenticateToken, requireAdmin } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
@@ -25,7 +25,7 @@ router.get('/', async (req, res) => {
 });
 
 // POST update hero settings (protected)
-router.post('/', authenticateToken, async (req, res) => {
+router.post('/', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { backgroundImage, buttonText, buttonLink, title, subtitle } = req.body;
     
