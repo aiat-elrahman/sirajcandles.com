@@ -142,7 +142,7 @@ app.get('/api/health', (req, res) => {
 // ============================================
 // NEW: UPLOAD ENDPOINT
 // ============================================
-app.post('/api/upload', authenticateToken, upload.single('image'), async (req, res) => {
+app.post('/api/upload', upload.single('image'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
