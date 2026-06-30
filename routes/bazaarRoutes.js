@@ -2,6 +2,7 @@ import express from 'express';
 import mongoose from 'mongoose';
 import Bazaarsale from '../models/Bazaarsale.js';
 import Product from '../models/Product.js';
+import InventoryMovement from '../models/InventoryMovement.js';
 import { authenticateToken, isAdminUser, requireAdmin } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
@@ -21,45 +22,98 @@ const getStockField = (location) => {
 };
 
 // Deduct stock for one item. Throws if insufficient.
-const deductStock = async (product, variantName, stockField, quantity, session) => {
+const deductStock = async (product, variantName, stockField, quantity, session, movementCtx = {}) => {
+  let stockBefore;
   if (variantName) {
     const variant = product.variants?.find(v => v.variantName === variantName);
     if (variant) {
-      if ((variant[stockField] || 0) < quantity)
-        throw new Error(`Not enough stock for ${product.name_en || product.name} (${variantName}). Available: ${variant[stockField] || 0}`);
+      stockBefore = variant[stockField] || 0;
+      if (stockBefore < quantity)
+        throw new Error(`Not enough stock for ${product.name_en || product.name} (${variantName}). Available: ${stockBefore}`);
       variant[stockField] -= quantity;
       if (stockField === 'stockOnline') variant.stock = variant.stockOnline;
     } else {
-      if ((product[stockField] || 0) < quantity)
-        throw new Error(`Not enough stock for ${product.name_en || product.name}. Available: ${product[stockField] || 0}`);
+      stockBefore = product[stockField] || 0;
+      if (stockBefore < quantity)
+        throw new Error(`Not enough stock for ${product.name_en || product.name}. Available: ${stockBefore}`);
       product[stockField] -= quantity;
       if (stockField === 'stockOnline') product.stock = product.stockOnline;
     }
   } else {
-    if ((product[stockField] || 0) < quantity)
-      throw new Error(`Not enough stock for ${product.name_en || product.name}. Available: ${product[stockField] || 0}`);
+    stockBefore = product[stockField] || 0;
+    if (stockBefore < quantity)
+      throw new Error(`Not enough stock for ${product.name_en || product.name}. Available: ${stockBefore}`);
     product[stockField] -= quantity;
     if (stockField === 'stockOnline') product.stock = product.stockOnline;
   }
   await product.save({ session });
+
+  // Record movement (non-blocking on missing context — safe default)
+  if (movementCtx.movementType) {
+    const location = stockField === 'stockOnline' ? 'online' : stockField === 'stockSabeel' ? 'sabeel' : 'clouds_tex';
+    const variant   = variantName ? product.variants?.find(v => v.variantName === variantName) : null;
+    const costPrice = variant?.costPrice || product.costPrice || 0;
+    await InventoryMovement.record({
+      productId:     product._id,
+      productName:   product.name_en || product.bundleName || product.name,
+      variantName:   variantName || '',
+      location,
+      quantityChange: -quantity,
+      currentStockBefore: stockBefore,
+      movementType:  movementCtx.movementType,
+      reason:        movementCtx.reason || '',
+      sourceType:    movementCtx.sourceType || 'bazaar_sale',
+      sourceId:      movementCtx.sourceId   || '',
+      createdBy:     movementCtx.createdBy     || '',
+      createdByRole: movementCtx.createdByRole || '',
+      salePrice:     movementCtx.salePrice  || 0,
+      costPrice,
+    }, session);
+  }
 };
 
 // Restore stock for one item (reverse of deductStock).
-const restoreStock = async (product, variantName, stockField, quantity, session) => {
+const restoreStock = async (product, variantName, stockField, quantity, session, movementCtx = {}) => {
+  let stockBefore;
   if (variantName) {
     const variant = product.variants?.find(v => v.variantName === variantName);
     if (variant) {
-      variant[stockField] = (variant[stockField] || 0) + quantity;
+      stockBefore = variant[stockField] || 0;
+      variant[stockField] = stockBefore + quantity;
       if (stockField === 'stockOnline') variant.stock = variant.stockOnline;
     } else {
-      product[stockField] = (product[stockField] || 0) + quantity;
+      stockBefore = product[stockField] || 0;
+      product[stockField] = stockBefore + quantity;
       if (stockField === 'stockOnline') product.stock = product.stockOnline;
     }
   } else {
-    product[stockField] = (product[stockField] || 0) + quantity;
+    stockBefore = product[stockField] || 0;
+    product[stockField] = stockBefore + quantity;
     if (stockField === 'stockOnline') product.stock = product.stockOnline;
   }
   await product.save({ session });
+
+  if (movementCtx.movementType) {
+    const location = stockField === 'stockOnline' ? 'online' : stockField === 'stockSabeel' ? 'sabeel' : 'clouds_tex';
+    const variant   = variantName ? product.variants?.find(v => v.variantName === variantName) : null;
+    const costPrice = variant?.costPrice || product.costPrice || 0;
+    await InventoryMovement.record({
+      productId:     product._id,
+      productName:   product.name_en || product.bundleName || product.name,
+      variantName:   variantName || '',
+      location,
+      quantityChange: quantity,
+      currentStockBefore: stockBefore,
+      movementType:  movementCtx.movementType,
+      reason:        movementCtx.reason || '',
+      sourceType:    movementCtx.sourceType || 'bazaar_sale',
+      sourceId:      movementCtx.sourceId   || '',
+      createdBy:     movementCtx.createdBy     || '',
+      createdByRole: movementCtx.createdByRole || '',
+      salePrice:     0,
+      costPrice,
+    }, session);
+  }
 };
 
 // Check if the one-hour edit window is still open for a sale.
@@ -211,12 +265,20 @@ router.post('/', authenticateToken, async (req, res) => {
     const saleDate       = bazaarDay ? new Date(bazaarDay) : now;
     let subtotal         = 0;
     const finalItems     = [];
+    const pendingSaleId  = new mongoose.Types.ObjectId(); // pre-generated so movement links to the sale
 
     for (const item of items) {
       const product = await Product.findById(item.productId).session(session);
       if (!product) throw new Error(`Product not found: ${item.productName}`);
 
-      await deductStock(product, item.variantName, stockField, item.quantity, session);
+      await deductStock(product, item.variantName, stockField, item.quantity, session, {
+        movementType:  'sale',
+        sourceType:    'bazaar_sale',
+        sourceId:      pendingSaleId.toString(),
+        createdBy:     req.user?.username || '',
+        createdByRole: req.user?.role     || '',
+        salePrice:     item.isFreeGift ? 0 : item.salePrice,
+      });
 
       const lineTotal = item.isFreeGift ? 0 : item.salePrice * item.quantity;
       subtotal += lineTotal;
@@ -235,6 +297,7 @@ router.post('/', authenticateToken, async (req, res) => {
     const totalAmount = Math.max(0, subtotal - (orderDiscount || 0));
 
     const sale = new Bazaarsale({
+      _id:           pendingSaleId,
       eventId:       eventId       || 'walkin',
       eventName:     eventName     || 'Bazaar Sale',
       eventLocation: eventLocation || 'On-site',
@@ -305,7 +368,14 @@ router.put('/:id', authenticateToken, async (req, res) => {
     for (const oldItem of sale.items) {
       const product = await Product.findById(oldItem.productId).session(session);
       if (!product) continue;
-      await restoreStock(product, oldItem.variantName, stockField, oldItem.quantity, session);
+      await restoreStock(product, oldItem.variantName, stockField, oldItem.quantity, session, {
+        movementType:  'sale_edit_restore',
+        sourceType:    'bazaar_sale',
+        sourceId:      sale._id.toString(),
+        reason:        'Old quantity restored before edit',
+        createdBy:     req.user?.username || '',
+        createdByRole: req.user?.role     || '',
+      });
     }
 
     // 2. Deduct stock for new items
@@ -314,7 +384,15 @@ router.put('/:id', authenticateToken, async (req, res) => {
     for (const item of items) {
       const product = await Product.findById(item.productId).session(session);
       if (!product) throw new Error(`Product not found: ${item.productName}`);
-      await deductStock(product, item.variantName, stockField, item.quantity, session);
+      await deductStock(product, item.variantName, stockField, item.quantity, session, {
+        movementType:  'sale_edit_deduct',
+        sourceType:    'bazaar_sale',
+        sourceId:      sale._id.toString(),
+        reason:        'New quantity deducted after edit',
+        createdBy:     req.user?.username || '',
+        createdByRole: req.user?.role     || '',
+        salePrice:     item.isFreeGift ? 0 : item.salePrice,
+      });
       const lineTotal = item.isFreeGift ? 0 : item.salePrice * item.quantity;
       newSubtotal += lineTotal;
       newItems.push(item);
@@ -383,7 +461,14 @@ router.post('/:id/void', authenticateToken, async (req, res) => {
     for (const item of sale.items) {
       const product = await Product.findById(item.productId).session(session);
       if (!product) continue;
-      await restoreStock(product, item.variantName, stockField, item.quantity, session);
+      await restoreStock(product, item.variantName, stockField, item.quantity, session, {
+        movementType:  'sale_void_restore',
+        sourceType:    'bazaar_sale',
+        sourceId:      sale._id.toString(),
+        reason:        reason || 'Sale voided',
+        createdBy:     req.user?.username || '',
+        createdByRole: req.user?.role     || '',
+      });
     }
 
     sale.status     = 'voided';
@@ -450,7 +535,14 @@ router.post('/:id/exchange', authenticateToken, async (req, res) => {
     for (const item of (returnedItems || [])) {
       const product = await Product.findById(item.productId).session(session);
       if (!product) throw new Error(`Returned product not found: ${item.productName}`);
-      await restoreStock(product, item.variantName, stockField, item.quantity, session);
+      await restoreStock(product, item.variantName, stockField, item.quantity, session, {
+        movementType:  'exchange_return',
+        sourceType:    'bazaar_sale',
+        sourceId:      sale._id.toString(),
+        reason:        'Customer returned item in exchange',
+        createdBy:     req.user?.username || '',
+        createdByRole: req.user?.role     || '',
+      });
       finalReturnedItems.push({
         productId:   product._id,
         productName: item.productName,
@@ -466,7 +558,15 @@ router.post('/:id/exchange', authenticateToken, async (req, res) => {
     for (const item of (newItems || [])) {
       const product = await Product.findById(item.productId).session(session);
       if (!product) throw new Error(`New product not found: ${item.productName}`);
-      await deductStock(product, item.variantName, stockField, item.quantity, session);
+      await deductStock(product, item.variantName, stockField, item.quantity, session, {
+        movementType:  'exchange_deduct',
+        sourceType:    'bazaar_sale',
+        sourceId:      sale._id.toString(),
+        reason:        'New item given in exchange',
+        createdBy:     req.user?.username || '',
+        createdByRole: req.user?.role     || '',
+        salePrice:     item.isFreeGift ? 0 : item.salePrice,
+      });
       const lineTotal = item.isFreeGift ? 0 : item.salePrice * item.quantity;
       newSubtotal += lineTotal;
       finalNewItems.push({
