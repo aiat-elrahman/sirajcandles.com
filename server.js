@@ -25,6 +25,7 @@ import contentRoutes from './routes/contentRoutes.js';
 import bazaarRoutes from './routes/bazaarRoutes.js';
 import authRoutes from './routes/authRoutes.js';
 import employeeRoutes from './routes/employeeRoutes.js';
+import inventoryRoutes from './routes/inventoryRoutes.js';
 import { requireAdmin } from './middleware/authMiddleware.js';
 dotenv.config();
 
@@ -130,6 +131,7 @@ app.use('/api/content', contentRoutes);
 app.use('/api/bazaar', bazaarRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/employees', employeeRoutes);
+app.use('/api/inventory', inventoryRoutes);
 // ============================================
 // HEALTH CHECK
 // ============================================
