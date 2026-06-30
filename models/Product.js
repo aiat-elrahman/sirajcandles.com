@@ -12,6 +12,7 @@ const variantSchema = new mongoose.Schema({
   variantName:  { type: String, required: true },
   variantType:  { type: String, required: true },
   price:        { type: Number, required: true, min: 0 },
+  costPrice:    { type: Number, default: 0, min: 0 },
   stock:        { type: Number, default: 0, min: 0 },          // online stock (legacy)
   sku:          String,
   // NEW: location stocks for this variant
@@ -31,6 +32,7 @@ const productSchema = new mongoose.Schema(
     category:     { type: String, required: true },
     subcategory:  { type: String, default: '' },
     price_egp:    { type: Number, required: true },
+    costPrice:    { type: Number, default: 0, min: 0 },
     stock:        { type: Number, default: 0, required: true },   // online stock (legacy)
     status:       { type: String, enum: ["Active", "Inactive"], default: "Active" },
     featured:     { type: Boolean, default: false },
