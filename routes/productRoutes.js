@@ -10,6 +10,7 @@ import {
     deleteProduct  // <-- Import delete function
 } from '../controllers/ProductController.js';
 import Product from '../models/Product.js';
+import InventoryMovement from '../models/InventoryMovement.js';
 const router = express.Router();
 
 const storage = multer.memoryStorage();
@@ -49,27 +50,85 @@ router.put('/:id/location-stock', authenticateToken, requireAdmin, async (req, r
     const product = await Product.findById(req.params.id);
     if (!product) return res.status(404).json({ error: 'Product not found' });
 
+    const productName = product.name_en || product.bundleName || product.name;
+    const movements    = []; // collect { location, before, after, costPrice } to record after save
+
     if (variantName) {
       // update variant
       const variant = product.variants.find(v => v.variantName === variantName);
       if (!variant) return res.status(404).json({ error: 'Variant not found' });
-      
+
+      const costPrice = variant.costPrice || product.costPrice || 0;
+
       // Force conversion to Numbers, fallback to existing stock if undefined
-      if (online !== undefined) variant.stockOnline = Number(online) || 0;
-      if (sabeel !== undefined) variant.stockSabeel = Number(sabeel) || 0;
-      if (clouds_tex !== undefined) variant.stockCloudsTex = Number(clouds_tex) || 0;
-      
+      if (online !== undefined) {
+        const before = variant.stockOnline || 0;
+        const after  = Number(online) || 0;
+        if (before !== after) movements.push({ location: 'online', before, after, costPrice });
+        variant.stockOnline = after;
+      }
+      if (sabeel !== undefined) {
+        const before = variant.stockSabeel || 0;
+        const after  = Number(sabeel) || 0;
+        if (before !== after) movements.push({ location: 'sabeel', before, after, costPrice });
+        variant.stockSabeel = after;
+      }
+      if (clouds_tex !== undefined) {
+        const before = variant.stockCloudsTex || 0;
+        const after  = Number(clouds_tex) || 0;
+        if (before !== after) movements.push({ location: 'clouds_tex', before, after, costPrice });
+        variant.stockCloudsTex = after;
+      }
+
       variant.stock = variant.stockOnline; // sync legacy
+      product.stock = product.variants.reduce((sum, v) => sum + Number(v.stockOnline || 0), 0);
     } else {
       // update simple product
-      if (online !== undefined) product.stockOnline = Number(online) || 0;
-      if (sabeel !== undefined) product.stockSabeel = Number(sabeel) || 0;
-      if (clouds_tex !== undefined) product.stockCloudsTex = Number(clouds_tex) || 0;
-      
+      const costPrice = product.costPrice || 0;
+
+      if (online !== undefined) {
+        const before = product.stockOnline || 0;
+        const after  = Number(online) || 0;
+        if (before !== after) movements.push({ location: 'online', before, after, costPrice });
+        product.stockOnline = after;
+      }
+      if (sabeel !== undefined) {
+        const before = product.stockSabeel || 0;
+        const after  = Number(sabeel) || 0;
+        if (before !== after) movements.push({ location: 'sabeel', before, after, costPrice });
+        product.stockSabeel = after;
+      }
+      if (clouds_tex !== undefined) {
+        const before = product.stockCloudsTex || 0;
+        const after  = Number(clouds_tex) || 0;
+        if (before !== after) movements.push({ location: 'clouds_tex', before, after, costPrice });
+        product.stockCloudsTex = after;
+      }
+
       product.stock = product.stockOnline; // sync legacy
     }
-    
+
     await product.save();
+
+    // Record one movement per location field that actually changed
+    for (const m of movements) {
+      await InventoryMovement.record({
+        productId:     product._id,
+        productName,
+        variantName:   variantName || '',
+        location:      m.location,
+        quantityChange: m.after - m.before,
+        currentStockBefore: m.before,
+        movementType:  'manual_adjustment',
+        reason:        'Stock Manager manual update',
+        sourceType:    'manual',
+        createdBy:     req.user?.username || '',
+        createdByRole: req.user?.role     || '',
+        salePrice:     0,
+        costPrice:     m.costPrice,
+      });
+    }
+
     res.json({ success: true, product });
   } catch (err) {
     res.status(500).json({ error: err.message });
