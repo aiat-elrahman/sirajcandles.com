@@ -1,6 +1,8 @@
+import mongoose from "mongoose";
 import Order from "../models/Order.js";
 import Product from "../models/Product.js";
 import Discount from "../models/Discount.js";
+import InventoryMovement from "../models/InventoryMovement.js";
 
 // --- 1. CREATE ORDER (User Side) ---
 export const createOrder = async (req, res) => {
@@ -15,6 +17,7 @@ export const createOrder = async (req, res) => {
 
         let calculatedSubtotal = 0;
         const finalItems = [];
+        const pendingOrderId = new mongoose.Types.ObjectId(); // pre-generated so movement links to the order
 
         for (const item of items) {
             const product = await Product.findById(item.productId);
@@ -47,6 +50,23 @@ export const createOrder = async (req, res) => {
                     variantFound = true;
                     // Also sync main stock so listing page reflects reality
                     product.stock = product.variants.reduce((sum, v) => sum + (v.stockOnline !== undefined ? v.stockOnline : v.stock), 0);
+
+                    // Record inventory movement for this variant deduction
+                    await InventoryMovement.record({
+                        productId:     product._id,
+                        productName:   product.name_en || product.bundleName || product.name,
+                        variantName:   item.variantName,
+                        location:      'online',
+                        quantityChange: -item.quantity,
+                        currentStockBefore: stockAvailable,
+                        movementType:  'web_order',
+                        sourceType:    'web_order',
+                        sourceId:      pendingOrderId.toString(),
+                        createdBy:     'website',
+                        createdByRole: 'customer',
+                        salePrice:     variant.price,
+                        costPrice:     variant.costPrice || product.costPrice || 0,
+                    });
                 }
             }
 
@@ -63,6 +83,23 @@ export const createOrder = async (req, res) => {
                     product.stock -= item.quantity;
                 }
                 product.stock = product.stockOnline !== undefined ? product.stockOnline : product.stock;
+
+                // Record inventory movement for this product deduction
+                await InventoryMovement.record({
+                    productId:     product._id,
+                    productName:   product.name_en || product.bundleName || product.name,
+                    variantName:   '',
+                    location:      'online',
+                    quantityChange: -item.quantity,
+                    currentStockBefore: stockAvailable,
+                    movementType:  'web_order',
+                    sourceType:    'web_order',
+                    sourceId:      pendingOrderId.toString(),
+                    createdBy:     'website',
+                    createdByRole: 'customer',
+                    salePrice:     priceToUse,
+                    costPrice:     product.costPrice || 0,
+                });
             }
 
             await product.save();
@@ -85,6 +122,24 @@ export const createOrder = async (req, res) => {
                                                 else v.stock -= item.quantity;
                                                 if (v.stockOnline !== undefined) v.stock = v.stockOnline;
                                                 linkedVariantDeducted = true;
+
+                                                await InventoryMovement.record({
+                                                    productId:     linkedProd._id,
+                                                    productName:   linkedProd.name_en || linkedProd.bundleName || linkedProd.name,
+                                                    variantName:   v.variantName,
+                                                    location:      'online',
+                                                    quantityChange: -item.quantity,
+                                                    currentStockBefore: linkedStock,
+                                                    movementType:  'web_order',
+                                                    sourceType:    'web_order',
+                                                    sourceId:      pendingOrderId.toString(),
+                                                    reason:        `Bundle component: ${bItem.subProductName}`,
+                                                    createdBy:     'website',
+                                                    createdByRole: 'customer',
+                                                    salePrice:     0, // bundle component — no individual sale price
+                                                    costPrice:     v.costPrice || linkedProd.costPrice || 0,
+                                                });
+
                                                 break;
                                             }
                                         }
@@ -98,6 +153,23 @@ export const createOrder = async (req, res) => {
                                     if (linkedProd.stockOnline !== undefined) linkedProd.stockOnline -= item.quantity;
                                     else linkedProd.stock -= item.quantity;
                                     linkedProd.stock = linkedProd.stockOnline !== undefined ? linkedProd.stockOnline : linkedProd.stock;
+
+                                    await InventoryMovement.record({
+                                        productId:     linkedProd._id,
+                                        productName:   linkedProd.name_en || linkedProd.bundleName || linkedProd.name,
+                                        variantName:   '',
+                                        location:      'online',
+                                        quantityChange: -item.quantity,
+                                        currentStockBefore: linkedStock,
+                                        movementType:  'web_order',
+                                        sourceType:    'web_order',
+                                        sourceId:      pendingOrderId.toString(),
+                                        reason:        `Bundle component: ${bItem.subProductName}`,
+                                        createdBy:     'website',
+                                        createdByRole: 'customer',
+                                        salePrice:     0,
+                                        costPrice:     linkedProd.costPrice || 0,
+                                    });
                                 } else {
                                     throw new Error(`Insufficient stock for bundle item ${bItem.subProductName}`);
                                 }
@@ -133,6 +205,7 @@ export const createOrder = async (req, res) => {
 
         console.log("Saving order to DB...");
         const order = new Order({
+            _id: pendingOrderId,
             customerInfo,
             items: finalItems,
             subtotal: calculatedSubtotal,
