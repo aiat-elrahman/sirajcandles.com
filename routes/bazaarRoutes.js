@@ -21,6 +21,33 @@ const getStockField = (location) => {
   }
 };
 
+const syncLegacyOnlineStock = (product) => {
+  if (product.variants?.length) {
+    product.stock = product.variants.reduce((sum, v) => sum + Number(v.stockOnline || 0), 0);
+  } else {
+    product.stock = product.stockOnline || 0;
+  }
+};
+
+const itemKey = (item) => `${item.productId?.toString?.() || item.productId}:${item.variantName || ''}`;
+
+const lineTotal = (item) => (item.isFreeGift ? 0 : (Number(item.salePrice) || 0) * (Number(item.quantity) || 0));
+
+const mergeSaleItems = (items) => {
+  const byKey = new Map();
+  for (const item of items) {
+    const key = itemKey(item);
+    const existing = byKey.get(key);
+    if (existing) {
+      existing.quantity += Number(item.quantity) || 0;
+      existing.itemNote = [existing.itemNote, item.itemNote].filter(Boolean).join(' | ');
+    } else {
+      byKey.set(key, { ...item, quantity: Number(item.quantity) || 0 });
+    }
+  }
+  return Array.from(byKey.values()).filter(item => item.quantity > 0);
+};
+
 // Deduct stock for one item. Throws if insufficient.
 const deductStock = async (product, variantName, stockField, quantity, session, movementCtx = {}) => {
   let stockBefore;
@@ -31,20 +58,23 @@ const deductStock = async (product, variantName, stockField, quantity, session, 
       if (stockBefore < quantity)
         throw new Error(`Not enough stock for ${product.name_en || product.name} (${variantName}). Available: ${stockBefore}`);
       variant[stockField] -= quantity;
-      if (stockField === 'stockOnline') variant.stock = variant.stockOnline;
+      if (stockField === 'stockOnline') {
+        variant.stock = variant.stockOnline;
+        syncLegacyOnlineStock(product);
+      }
     } else {
       stockBefore = product[stockField] || 0;
       if (stockBefore < quantity)
         throw new Error(`Not enough stock for ${product.name_en || product.name}. Available: ${stockBefore}`);
       product[stockField] -= quantity;
-      if (stockField === 'stockOnline') product.stock = product.stockOnline;
+      if (stockField === 'stockOnline') syncLegacyOnlineStock(product);
     }
   } else {
     stockBefore = product[stockField] || 0;
     if (stockBefore < quantity)
       throw new Error(`Not enough stock for ${product.name_en || product.name}. Available: ${stockBefore}`);
     product[stockField] -= quantity;
-    if (stockField === 'stockOnline') product.stock = product.stockOnline;
+    if (stockField === 'stockOnline') syncLegacyOnlineStock(product);
   }
   await product.save({ session });
 
@@ -80,16 +110,19 @@ const restoreStock = async (product, variantName, stockField, quantity, session,
     if (variant) {
       stockBefore = variant[stockField] || 0;
       variant[stockField] = stockBefore + quantity;
-      if (stockField === 'stockOnline') variant.stock = variant.stockOnline;
+      if (stockField === 'stockOnline') {
+        variant.stock = variant.stockOnline;
+        syncLegacyOnlineStock(product);
+      }
     } else {
       stockBefore = product[stockField] || 0;
       product[stockField] = stockBefore + quantity;
-      if (stockField === 'stockOnline') product.stock = product.stockOnline;
+      if (stockField === 'stockOnline') syncLegacyOnlineStock(product);
     }
   } else {
     stockBefore = product[stockField] || 0;
     product[stockField] = stockBefore + quantity;
-    if (stockField === 'stockOnline') product.stock = product.stockOnline;
+    if (stockField === 'stockOnline') syncLegacyOnlineStock(product);
   }
   await product.save({ session });
 
@@ -529,13 +562,23 @@ router.post('/:id/exchange', authenticateToken, async (req, res) => {
     }
 
     const stockField = getStockField(sale.location || 'bazaar');
+    const remainingItems = sale.items.map(item => ({ ...(item.toObject?.() || item) }));
 
     // 1. Restore stock for returned items
     const finalReturnedItems = [];
     for (const item of (returnedItems || [])) {
+      const returnQty = Number(item.quantity) || 0;
+      if (returnQty <= 0) throw new Error('Returned quantity must be greater than zero.');
+
+      const original = remainingItems.find(existing => itemKey(existing) === itemKey(item));
+      if (!original) throw new Error(`Returned item was not found in the original sale: ${item.productName}`);
+      if (returnQty > original.quantity) {
+        throw new Error(`Cannot return ${returnQty} of ${item.productName}. Original remaining quantity is ${original.quantity}.`);
+      }
+
       const product = await Product.findById(item.productId).session(session);
       if (!product) throw new Error(`Returned product not found: ${item.productName}`);
-      await restoreStock(product, item.variantName, stockField, item.quantity, session, {
+      await restoreStock(product, item.variantName, stockField, returnQty, session, {
         movementType:  'exchange_return',
         sourceType:    'bazaar_sale',
         sourceId:      sale._id.toString(),
@@ -543,12 +586,13 @@ router.post('/:id/exchange', authenticateToken, async (req, res) => {
         createdBy:     req.user?.username || '',
         createdByRole: req.user?.role     || '',
       });
+      original.quantity -= returnQty;
       finalReturnedItems.push({
         productId:   product._id,
         productName: item.productName,
         variantName: item.variantName || '',
-        quantity:    item.quantity,
-        salePrice:   item.salePrice,
+        quantity:    returnQty,
+        salePrice:   item.salePrice ?? original.salePrice,
       });
     }
 
@@ -556,9 +600,12 @@ router.post('/:id/exchange', authenticateToken, async (req, res) => {
     let newSubtotal = 0;
     const finalNewItems = [];
     for (const item of (newItems || [])) {
+      const addQty = Number(item.quantity) || 0;
+      if (addQty <= 0) throw new Error('New item quantity must be greater than zero.');
+
       const product = await Product.findById(item.productId).session(session);
       if (!product) throw new Error(`New product not found: ${item.productName}`);
-      await deductStock(product, item.variantName, stockField, item.quantity, session, {
+      await deductStock(product, item.variantName, stockField, addQty, session, {
         movementType:  'exchange_deduct',
         sourceType:    'bazaar_sale',
         sourceId:      sale._id.toString(),
@@ -567,25 +614,31 @@ router.post('/:id/exchange', authenticateToken, async (req, res) => {
         createdByRole: req.user?.role     || '',
         salePrice:     item.isFreeGift ? 0 : item.salePrice,
       });
-      const lineTotal = item.isFreeGift ? 0 : item.salePrice * item.quantity;
-      newSubtotal += lineTotal;
+      const itemTotal = item.isFreeGift ? 0 : item.salePrice * addQty;
+      newSubtotal += itemTotal;
       finalNewItems.push({
         productId:     product._id,
         productName:   item.productName,
         variantName:   item.variantName   || '',
         originalPrice: item.originalPrice || item.salePrice,
         salePrice:     item.isFreeGift ? 0 : item.salePrice,
-        quantity:      item.quantity,
+        quantity:      addQty,
         isFreeGift:    item.isFreeGift    || false,
         itemNote:      item.itemNote      || '',
       });
     }
 
     // 3. Update sale — replace items with new items, record returned items
-    sale.items         = finalNewItems.length > 0 ? finalNewItems : sale.items;
+    const finalItems = mergeSaleItems([
+      ...remainingItems.filter(item => item.quantity > 0),
+      ...finalNewItems,
+    ]);
+    const finalSubtotal = finalItems.reduce((sum, item) => sum + lineTotal(item), 0);
+
+    sale.items         = finalItems;
     sale.returnedItems = finalReturnedItems;
-    sale.subtotal      = newSubtotal || sale.subtotal;
-    sale.totalAmount   = newSubtotal || sale.totalAmount;
+    sale.subtotal      = finalSubtotal;
+    sale.totalAmount   = Math.max(0, finalSubtotal - (sale.orderDiscount || 0));
     sale.status        = 'exchanged';
     sale.editedAt      = new Date();
     sale.editedBy      = req.user?.username || '';
