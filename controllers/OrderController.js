@@ -1,8 +1,112 @@
-import mongoose from "mongoose";
 import Order from "../models/Order.js";
 import Product from "../models/Product.js";
 import Discount from "../models/Discount.js";
-import InventoryMovement from "../models/InventoryMovement.js";
+import nodemailer from "nodemailer";
+
+// ── Notification helpers ──────────────────────────────────────────────────────
+
+// Build a readable order summary used in both Telegram and Email
+const buildOrderSummary = (order) => {
+  const { customerInfo, items, totalAmount, shippingFee, discountAmount, discountCode, paymentMethod } = order;
+
+  const itemLines = items.map(i =>
+    `  • ${i.name}${i.variantName ? ` (${i.variantName})` : ''} × ${i.quantity} — ${(i.price * i.quantity).toFixed(2)} EGP`
+  ).join('\n');
+
+  return {
+    customerName:  customerInfo?.name  || 'Unknown',
+    customerPhone: customerInfo?.phone || '—',
+    customerCity:  customerInfo?.city  || '—',
+    itemLines,
+    total:         totalAmount?.toFixed(2)    || '0.00',
+    shipping:      shippingFee?.toFixed(2)    || '0.00',
+    discount:      discountAmount?.toFixed(2) || '0.00',
+    discountCode:  discountCode || null,
+    payment:       paymentMethod || 'COD',
+    orderId:       order._id?.toString().slice(-8).toUpperCase(),
+  };
+};
+
+// Send Telegram notification to the orders group
+const sendTelegramNotification = async (order) => {
+  const token  = process.env.TELEGRAM_BOT_TOKEN;
+  const chatId = process.env.TELEGRAM_CHAT_ID;
+  if (!token || !chatId) return; // silently skip if not configured
+
+  try {
+    const s = buildOrderSummary(order);
+    const text =
+      `🛍️ *New Order — Siraj Candles*\n\n` +
+      `👤 ${s.customerName}\n` +
+      `📍 ${s.customerCity}\n` +
+      `📞 ${s.customerPhone}\n\n` +
+      `*Items:*\n${s.itemLines}\n\n` +
+      (s.discountCode ? `🏷️ Discount: ${s.discountCode} (-${s.discount} EGP)\n` : '') +
+      `🚚 Shipping: ${s.shipping} EGP\n` +
+      `💰 *Total: ${s.total} EGP*\n` +
+      `💳 Payment: ${s.payment}\n\n` +
+      `🔖 Order ID: #${s.orderId}`;
+
+    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'Markdown' }),
+    });
+  } catch (err) {
+    console.error('Telegram notification failed:', err.message);
+    // Never block the order response — just log and continue
+  }
+};
+
+// Send email notification to admin
+const sendEmailNotification = async (order) => {
+  const gmailUser = process.env.GMAIL_USER;
+  const gmailPass = process.env.GMAIL_APP_PASSWORD;
+  const adminEmail = process.env.ADMIN_EMAIL;
+  if (!gmailUser || !gmailPass || !adminEmail) return; // silently skip if not configured
+
+  try {
+    const s = buildOrderSummary(order);
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: { user: gmailUser, pass: gmailPass },
+    });
+
+    await transporter.sendMail({
+      from:    `"Siraj Candles Orders" <${gmailUser}>`,
+      to:      adminEmail,
+      subject: `🛍️ New Order #${s.orderId} — ${s.customerName} — ${s.total} EGP`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #BE185D;">🛍️ New Order — Siraj Candles</h2>
+          <table style="width:100%; border-collapse:collapse; margin-bottom:16px;">
+            <tr><td style="padding:6px; color:#6B4A6E; font-weight:bold;">Customer</td><td style="padding:6px;">${s.customerName}</td></tr>
+            <tr><td style="padding:6px; color:#6B4A6E; font-weight:bold;">Phone</td><td style="padding:6px;">${s.customerPhone}</td></tr>
+            <tr><td style="padding:6px; color:#6B4A6E; font-weight:bold;">City</td><td style="padding:6px;">${s.customerCity}</td></tr>
+            <tr><td style="padding:6px; color:#6B4A6E; font-weight:bold;">Payment</td><td style="padding:6px;">${s.payment}</td></tr>
+            <tr><td style="padding:6px; color:#6B4A6E; font-weight:bold;">Order ID</td><td style="padding:6px;">#${s.orderId}</td></tr>
+          </table>
+          <h3 style="color:#BE185D;">Items Ordered</h3>
+          <pre style="background:#FFF0F6; padding:12px; border-radius:8px; font-size:14px;">${s.itemLines}</pre>
+          <table style="width:100%; margin-top:12px;">
+            ${s.discountCode ? `<tr><td style="color:#059669;">Discount (${s.discountCode})</td><td style="text-align:right; color:#059669;">-${s.discount} EGP</td></tr>` : ''}
+            <tr><td>Shipping</td><td style="text-align:right;">${s.shipping} EGP</td></tr>
+            <tr style="font-size:18px; font-weight:bold; color:#BE185D;">
+              <td>Total</td><td style="text-align:right;">${s.total} EGP</td>
+            </tr>
+          </table>
+          <p style="margin-top:20px; color:#6B4A6E; font-size:12px;">
+            Log in to your <a href="https://sirajcare.com/admin-upload" style="color:#BE185D;">admin dashboard</a> to confirm this order.
+          </p>
+        </div>
+      `,
+    });
+  } catch (err) {
+    console.error('Email notification failed:', err.message);
+    // Never block the order response — just log and continue
+  }
+};
+
 
 // --- 1. CREATE ORDER (User Side) ---
 export const createOrder = async (req, res) => {
@@ -17,7 +121,6 @@ export const createOrder = async (req, res) => {
 
         let calculatedSubtotal = 0;
         const finalItems = [];
-        const pendingOrderId = new mongoose.Types.ObjectId(); // pre-generated so movement links to the order
 
         for (const item of items) {
             const product = await Product.findById(item.productId);
@@ -50,23 +153,6 @@ export const createOrder = async (req, res) => {
                     variantFound = true;
                     // Also sync main stock so listing page reflects reality
                     product.stock = product.variants.reduce((sum, v) => sum + (v.stockOnline !== undefined ? v.stockOnline : v.stock), 0);
-
-                    // Record inventory movement for this variant deduction
-                    await InventoryMovement.record({
-                        productId:     product._id,
-                        productName:   product.name_en || product.bundleName || product.name,
-                        variantName:   item.variantName,
-                        location:      'online',
-                        quantityChange: -item.quantity,
-                        currentStockBefore: stockAvailable,
-                        movementType:  'web_order',
-                        sourceType:    'web_order',
-                        sourceId:      pendingOrderId.toString(),
-                        createdBy:     'website',
-                        createdByRole: 'customer',
-                        salePrice:     variant.price,
-                        costPrice:     variant.costPrice || product.costPrice || 0,
-                    });
                 }
             }
 
@@ -83,23 +169,6 @@ export const createOrder = async (req, res) => {
                     product.stock -= item.quantity;
                 }
                 product.stock = product.stockOnline !== undefined ? product.stockOnline : product.stock;
-
-                // Record inventory movement for this product deduction
-                await InventoryMovement.record({
-                    productId:     product._id,
-                    productName:   product.name_en || product.bundleName || product.name,
-                    variantName:   '',
-                    location:      'online',
-                    quantityChange: -item.quantity,
-                    currentStockBefore: stockAvailable,
-                    movementType:  'web_order',
-                    sourceType:    'web_order',
-                    sourceId:      pendingOrderId.toString(),
-                    createdBy:     'website',
-                    createdByRole: 'customer',
-                    salePrice:     priceToUse,
-                    costPrice:     product.costPrice || 0,
-                });
             }
 
             await product.save();
@@ -122,24 +191,6 @@ export const createOrder = async (req, res) => {
                                                 else v.stock -= item.quantity;
                                                 if (v.stockOnline !== undefined) v.stock = v.stockOnline;
                                                 linkedVariantDeducted = true;
-
-                                                await InventoryMovement.record({
-                                                    productId:     linkedProd._id,
-                                                    productName:   linkedProd.name_en || linkedProd.bundleName || linkedProd.name,
-                                                    variantName:   v.variantName,
-                                                    location:      'online',
-                                                    quantityChange: -item.quantity,
-                                                    currentStockBefore: linkedStock,
-                                                    movementType:  'web_order',
-                                                    sourceType:    'web_order',
-                                                    sourceId:      pendingOrderId.toString(),
-                                                    reason:        `Bundle component: ${bItem.subProductName}`,
-                                                    createdBy:     'website',
-                                                    createdByRole: 'customer',
-                                                    salePrice:     0, // bundle component — no individual sale price
-                                                    costPrice:     v.costPrice || linkedProd.costPrice || 0,
-                                                });
-
                                                 break;
                                             }
                                         }
@@ -153,23 +204,6 @@ export const createOrder = async (req, res) => {
                                     if (linkedProd.stockOnline !== undefined) linkedProd.stockOnline -= item.quantity;
                                     else linkedProd.stock -= item.quantity;
                                     linkedProd.stock = linkedProd.stockOnline !== undefined ? linkedProd.stockOnline : linkedProd.stock;
-
-                                    await InventoryMovement.record({
-                                        productId:     linkedProd._id,
-                                        productName:   linkedProd.name_en || linkedProd.bundleName || linkedProd.name,
-                                        variantName:   '',
-                                        location:      'online',
-                                        quantityChange: -item.quantity,
-                                        currentStockBefore: linkedStock,
-                                        movementType:  'web_order',
-                                        sourceType:    'web_order',
-                                        sourceId:      pendingOrderId.toString(),
-                                        reason:        `Bundle component: ${bItem.subProductName}`,
-                                        createdBy:     'website',
-                                        createdByRole: 'customer',
-                                        salePrice:     0,
-                                        costPrice:     linkedProd.costPrice || 0,
-                                    });
                                 } else {
                                     throw new Error(`Insufficient stock for bundle item ${bItem.subProductName}`);
                                 }
@@ -205,7 +239,6 @@ export const createOrder = async (req, res) => {
 
         console.log("Saving order to DB...");
         const order = new Order({
-            _id: pendingOrderId,
             customerInfo,
             items: finalItems,
             subtotal: calculatedSubtotal,
@@ -219,6 +252,10 @@ export const createOrder = async (req, res) => {
 
         const createdOrder = await order.save();
         console.log("✅ ORDER SAVED SUCCESSFULLY! ID:", createdOrder._id);
+
+        // Fire notifications — non-blocking, never delay the customer response
+        sendTelegramNotification(createdOrder).catch(e => console.error('Telegram error:', e));
+        sendEmailNotification(createdOrder).catch(e => console.error('Email error:', e));
 
         res.status(201).json({ message: "Order created successfully", orderId: createdOrder._id });
 
