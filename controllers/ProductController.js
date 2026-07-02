@@ -46,6 +46,7 @@ const buildProductData = (productData, productType, imagePaths) => {
         stock: productType === 'Bundle' ? 999 : productData.stock,
         status: productData.status,
         featured: productData.featured || false,
+        costPrice: productData.costPrice !== undefined ? Number(productData.costPrice) : 0,
         
         // ADD THESE THREE LINES:
         stockOnline: productData.stockOnline !== undefined ? Number(productData.stockOnline) : 0,
