@@ -22,6 +22,33 @@ const siteSettingsSchema = new mongoose.Schema({
   footerInstagram: { type: String, default: 'https://www.instagram.com/siraj_candles_eg' },
   footerFacebook:  { type: String, default: 'https://www.facebook.com/people/sirajcandles/61576576972784/' },
   footerTiktok:    { type: String, default: 'https://www.tiktok.com/@sirajcandles' },
+
+  // WhatsApp order confirmation message template
+  // Supports placeholders: {{name}}, {{orderId}}, {{total}}, {{items}}, {{city}}
+  whatsappOrderTemplate: {
+    type: String,
+    default: `هاي {{name}} 🤍
+أهلا بيكي في Siraj family ✨
+اتبسطنا جدا انك حبيتي تجربي منتجاتنا ونتمني يعجبك 🌷
+اوردرك برقم {{orderId}}
+
+Total: {{total}} EGP
+
+لتأكيد الاوردر برجاء تحويل ديبوزت علي رقم
+الـ Instapay:
+[+201001775793]
+بإسم مروه احمد
+ابعتلنا سكرين شوت أو تأكيد التحويل هنا على الواتساب 😊
+
+الشحن هيبقي عن طريق البريد المصري.
+ملحوظة بسيطة: البريد المصري لا يوفر خدمة الدفع عند الاستلام، لذلك بعد ما نبعتلك تفاصيل الشحنة هيكون المطلوب تحويل المبلغ المتبقي عن طريق Instapay أو wallet الأنسب ليكي.
+
+متحمسين جدًا يوصل طلبك وتجربي منتجات Siraj 🤍✨
+ولو عندك أي سؤال إحنا موجودين في أي وقت.`,
+  },
+
+  // WhatsApp business number (yours) — used to open the chat
+  whatsappPhone: { type: String, default: '+201001775793' },
 }, { timestamps: true });
 
 export default mongoose.model('SiteSettings', siteSettingsSchema);
