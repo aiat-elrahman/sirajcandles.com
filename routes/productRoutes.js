@@ -15,6 +15,28 @@ const router = express.Router();
 
 const storage = multer.memoryStorage();
 const upload = multer({ storage: storage });
+const SITE_URL = 'https://sirajcare.com';
+
+const escapeCsv = value => `"${String(value ?? '').replace(/"/g, '""')}"`;
+const stripHtml = value => String(value || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+const absoluteImageUrl = url => {
+  if (!url) return '';
+  if (/^https?:\/\//i.test(url)) return url;
+  return `${SITE_URL}/${String(url).replace(/^\/+/, '')}`;
+};
+
+const getProductStock = product => {
+  if (product.variants?.length) {
+    return product.variants.reduce((sum, variant) => sum + Number(variant.stockOnline ?? variant.stock ?? 0), 0);
+  }
+  return Number(product.stockOnline ?? product.stock ?? 0);
+};
+
+const getProductPrice = product => {
+  if (product.productType === 'Bundle') return Number(product.bundlePrice || product.price_egp || product.price || 0);
+  if (product.variants?.length) return Number(product.variants[0].price || product.price_egp || product.price || 0);
+  return Number(product.price_egp || product.price || 0);
+};
 
 // --- Define Routes ---
 // ── NEW: Get location stock for a product (including variants) ──
@@ -132,6 +154,51 @@ router.put('/:id/location-stock', authenticateToken, requireAdmin, async (req, r
     res.json({ success: true, product });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/catalog-feed.csv', async (req, res) => {
+  try {
+    const products = await Product.find({ status: 'Active' }).sort({ updatedAt: -1 });
+    const header = [
+      'id',
+      'title',
+      'description',
+      'availability',
+      'condition',
+      'price',
+      'link',
+      'image_link',
+      'brand',
+      'google_product_category',
+    ];
+
+    const rows = products.map(product => {
+      const title = product.name_en || product.bundleName || product.name || 'Siraj Candles Product';
+      const description = stripHtml(product.description_en || product.bundleDescription || product.formattedDescription || title);
+      const price = getProductPrice(product);
+      const availability = getProductStock(product) > 0 ? 'in stock' : 'out of stock';
+      const image = absoluteImageUrl(product.imagePaths?.[0] || product.images?.[0] || '');
+
+      return [
+        product._id,
+        title,
+        description,
+        availability,
+        'new',
+        `${price.toFixed(2)} EGP`,
+        `${SITE_URL}/product.html?id=${product._id}`,
+        image,
+        'Siraj Candles',
+        'Home & Garden > Decor > Home Fragrances > Candles',
+      ].map(escapeCsv).join(',');
+    });
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.send([header.join(','), ...rows].join('\n'));
+  } catch (err) {
+    console.error('Catalog feed error:', err);
+    res.status(500).json({ message: 'Could not generate catalog feed.' });
   }
 });
 // GET /api/products
