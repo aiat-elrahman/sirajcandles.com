@@ -27,6 +27,7 @@ import authRoutes from './routes/authRoutes.js';
 import employeeRoutes from './routes/employeeRoutes.js';
 import inventoryRoutes from './routes/inventoryRoutes.js';
 import trackingRoutes from './routes/trackingRoutes.js';
+import pushRoutes from './routes/pushRoutes.js';
 import { requireAdmin } from './middleware/authMiddleware.js';
 dotenv.config();
 
@@ -134,6 +135,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/employees', employeeRoutes);
 app.use('/api/inventory', inventoryRoutes);
 app.use('/api/tracking', trackingRoutes);
+app.use('/api/push',     pushRoutes);
 // ============================================
 // HEALTH CHECK
 // ============================================
