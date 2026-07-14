@@ -27,8 +27,7 @@ import authRoutes from './routes/authRoutes.js';
 import employeeRoutes from './routes/employeeRoutes.js';
 import inventoryRoutes from './routes/inventoryRoutes.js';
 import trackingRoutes from './routes/trackingRoutes.js';
-// TEMP DISABLED — routes/pushRoutes.js is missing from the repo, was crashing every deploy.
-// Re-enable once the file is restored/rebuilt: import pushRoutes from './routes/pushRoutes.js';
+import pushRoutes from './routes/pushRoutes.js'; // rebuilt — see routes/pushRoutes.js
 import { requireAdmin } from './middleware/authMiddleware.js';
 dotenv.config();
 
@@ -136,8 +135,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/employees', employeeRoutes);
 app.use('/api/inventory', inventoryRoutes);
 app.use('/api/tracking', trackingRoutes);
-// TEMP DISABLED — see import comment above
-// app.use('/api/push',     pushRoutes);
+app.use('/api/push',     pushRoutes);
 // ============================================
 // HEALTH CHECK
 // ============================================
