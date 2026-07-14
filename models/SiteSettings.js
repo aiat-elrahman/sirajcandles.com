@@ -49,6 +49,13 @@ Total: {{total}} EGP
 
   // WhatsApp business number (yours) — used to open the chat
   whatsappPhone: { type: String, default: '+201001775793' },
+
+  // NEW: Free gift progress bar
+  freeGift: {
+    enabled:  { type: Boolean, default: false },
+    threshold: { type: Number, default: 500 },
+    giftProducts: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Product' }],
+  },
 }, { timestamps: true });
 
 export default mongoose.model('SiteSettings', siteSettingsSchema);
