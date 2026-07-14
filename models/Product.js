@@ -38,6 +38,11 @@ const productSchema = new mongoose.Schema(
     featured:     { type: Boolean, default: false },
     imagePaths:   [{ type: String }],
 
+    // NEW: sale price shown with strikethrough + SALE badge when < price_egp
+    salePrice:      { type: Number, default: 0, min: 0 },
+    // NEW: "pairs well with" product for the pairing popup
+    pairedProduct:  { type: mongoose.Schema.Types.ObjectId, ref: 'Product', default: null },
+
     // NEW: location stocks for simple products (no variants)
     stockOnline:      { type: Number, default: 0 },
     stockSabeel:      { type: Number, default: 0 },
