@@ -10,12 +10,25 @@ router.get('/', async (req, res) => {
     let settings = await HeroSettings.findOne();
     if (!settings) {
       settings = await HeroSettings.create({
-        backgroundImage: 'https://res.cloudinary.com/dvr195vfw/image/upload/f_auto,q_auto,w_1200/v1765150425/Your_paragraph_text_1_ck0hsl.png',
-        buttonText: 'Shop Now',
-        buttonLink: '/products.html',
-        title: 'Illuminate Your Space',
-        subtitle: 'Handcrafted Candles & Self-care Luxuries'
+        slides: [{
+          backgroundImage: 'https://res.cloudinary.com/dvr195vfw/image/upload/f_auto,q_auto,w_1200/v1765150425/Your_paragraph_text_1_ck0hsl.png',
+          buttonText: 'Shop Now',
+          buttonLink: '/products.html',
+          title: 'Illuminate Your Space',
+          subtitle: 'Handcrafted Candles & Self-care Luxuries'
+        }],
+        autoplaySpeed: 5000
       });
+    } else if ((!settings.slides || settings.slides.length === 0) && settings.backgroundImage) {
+      // One-time migration: fold the old single-slide fields into the new array
+      settings.slides = [{
+        backgroundImage: settings.backgroundImage,
+        title: settings.title,
+        subtitle: settings.subtitle,
+        buttonText: settings.buttonText,
+        buttonLink: settings.buttonLink,
+      }];
+      await settings.save();
     }
     res.json(settings);
   } catch (error) {
@@ -27,27 +40,18 @@ router.get('/', async (req, res) => {
 // POST update hero settings (protected)
 router.post('/', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const { backgroundImage, buttonText, buttonLink, title, subtitle } = req.body;
-    
+    const { slides, autoplaySpeed } = req.body;
+
     let settings = await HeroSettings.findOne();
     if (settings) {
-      settings.backgroundImage = backgroundImage || settings.backgroundImage;
-      settings.buttonText = buttonText || settings.buttonText;
-      settings.buttonLink = buttonLink || settings.buttonLink;
-      settings.title = title || settings.title;
-      settings.subtitle = subtitle || settings.subtitle;
+      if (Array.isArray(slides)) settings.slides = slides;
+      if (autoplaySpeed) settings.autoplaySpeed = autoplaySpeed;
       settings.updatedAt = Date.now();
       await settings.save();
     } else {
-      settings = await HeroSettings.create({
-        backgroundImage,
-        buttonText,
-        buttonLink,
-        title,
-        subtitle
-      });
+      settings = await HeroSettings.create({ slides: slides || [], autoplaySpeed: autoplaySpeed || 5000 });
     }
-    
+
     res.json({ success: true, settings });
   } catch (error) {
     console.error('Error saving hero settings:', error);
