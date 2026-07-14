@@ -52,6 +52,10 @@ const buildProductData = (productData, productType, imagePaths) => {
         stockOnline: productData.stockOnline !== undefined ? Number(productData.stockOnline) : 0,
         stockSabeel: productData.stockSabeel !== undefined ? Number(productData.stockSabeel) : 0,
         stockCloudsTex: productData.stockCloudsTex !== undefined ? Number(productData.stockCloudsTex) : 0,
+
+        // Sale price + product pairing
+        salePrice: productData.salePrice !== undefined ? Number(productData.salePrice) : 0,
+        pairedProduct: productData.pairedProduct || null,
     };
 
     if (productType === 'Bundle') {
@@ -285,7 +289,8 @@ export const getAllProducts = async (req, res) => {
  */
 export const getProductById = async (req, res) => {
     try {
-        const product = await Product.findById(req.params.id);
+        const product = await Product.findById(req.params.id)
+            .populate('pairedProduct', 'name_en imagePaths price_egp salePrice stock category');
 
         if (!product) {
             return res.status(404).json({ message: 'Product not found.' });
