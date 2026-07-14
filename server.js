@@ -27,7 +27,8 @@ import authRoutes from './routes/authRoutes.js';
 import employeeRoutes from './routes/employeeRoutes.js';
 import inventoryRoutes from './routes/inventoryRoutes.js';
 import trackingRoutes from './routes/trackingRoutes.js';
-import pushRoutes from './routes/pushRoutes.js';
+// TEMP DISABLED — routes/pushRoutes.js is missing from the repo, was crashing every deploy.
+// Re-enable once the file is restored/rebuilt: import pushRoutes from './routes/pushRoutes.js';
 import { requireAdmin } from './middleware/authMiddleware.js';
 dotenv.config();
 
@@ -95,7 +96,7 @@ app.use(express.json());
 
 //const HeroSettings = mongoose.model('HeroSettings', heroSettingsSchema);
 //app.use('/api/upload', uploadRoutes);
-// app.use('/api/settings/hero', heroRoutes);
+app.use('/api/settings/hero', heroRoutes);
 // app.use('/api/admin', adminRoutes);
 // ============================================
 // AUTHENTICATION MIDDLEWARE
@@ -135,7 +136,8 @@ app.use('/api/auth', authRoutes);
 app.use('/api/employees', employeeRoutes);
 app.use('/api/inventory', inventoryRoutes);
 app.use('/api/tracking', trackingRoutes);
-app.use('/api/push',     pushRoutes);
+// TEMP DISABLED — see import comment above
+// app.use('/api/push',     pushRoutes);
 // ============================================
 // HEALTH CHECK
 // ============================================
@@ -181,8 +183,11 @@ app.post('/api/upload', upload.single('image'), async (req, res) => {
 });
 
 // ============================================
-// NEW: HERO SETTINGS ENDPOINTS
+// SUPERSEDED — /api/settings/hero is now handled by heroRoutes.js (mounted above).
+// This inline version is disabled to avoid confusion; heroRoutes.js supports the
+// multi-slide carousel while this old version only knew a single slide.
 // ============================================
+/*
 app.get('/api/settings/hero', async (req, res) => {
   try {
     let settings = await HeroSettings.findOne();
@@ -237,6 +242,7 @@ app.post('/api/settings/hero', authenticateToken, requireAdmin, async (req, res)
     res.status(500).json({ error: 'Failed to save hero settings' });
   }
 });
+*/
 
 // ============================================
 // NEW: ADMIN AUTHENTICATION
