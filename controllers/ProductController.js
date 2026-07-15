@@ -304,8 +304,17 @@ export const getAllProducts = async (req, res) => {
 
 export const getProductById = async (req, res) => {
     try {
-        const product = await Product.findById(req.params.id)
-            .populate('pairedProduct', 'name_en bundleName imagePaths price_egp salePrice stock category slug');
+        const idOrSlug = req.params.id;
+        let product;
+
+        // Check if the parameter is a valid MongoDB ObjectId or a text slug
+        if (idOrSlug.match(/^[0-9a-fA-F]{24}$/)) {
+            product = await Product.findById(idOrSlug)
+                .populate('pairedProduct', 'name_en bundleName imagePaths price_egp salePrice stock category slug');
+        } else {
+            product = await Product.findOne({ slug: idOrSlug })
+                .populate('pairedProduct', 'name_en bundleName imagePaths price_egp salePrice stock category slug');
+        }
 
         if (!product) {
             return res.status(404).json({ message: 'Product not found.' });
@@ -313,7 +322,6 @@ export const getProductById = async (req, res) => {
 
         const productObj = { ...product._doc };
 
-        // Calculate real stock if it is a bundle
         if (productObj.productType === 'Bundle') {
             const realStock = await calculateBundleStock(productObj);
             productObj.stock = realStock;
@@ -323,14 +331,10 @@ export const getProductById = async (req, res) => {
         res.json(productObj);
 
     } catch (error) {
-        console.error('Error fetching product by ID:', error);
-        if (error.kind === 'ObjectId') {
-             return res.status(400).json({ message: 'Invalid product ID format.' });
-        }
+        console.error('Error fetching product by ID/Slug:', error);
         res.status(500).json({ message: 'Failed to fetch product details.' });
     }
 };
-
 export const updateProduct = async (req, res) => {
     try {
         const productId = req.params.id;
