@@ -29,11 +29,20 @@ const uploadToCloudinary = async (file) => {
 };
 
 // Helper function to build product data based on category and type
-// ProductController.js - Update this helper function
 const buildProductData = (productData, productType, imagePaths) => {
     // 1. Determine the "Common" name and price regardless of type
     const displayName = productType === 'Bundle' ? productData.bundleName : productData.name_en;
     const displayPrice = productType === 'Bundle' ? productData.bundlePrice : productData.price_egp;
+
+    // NEW: Auto-generate a clean, SEO-friendly slug
+    // Preserves Arabic characters, converts spaces to hyphens, and removes invalid URL characters
+    const baseSlug = (productData.slug || displayName || 'product')
+        .toLowerCase()
+        .replace(/[^a-z0-9\u0600-\u06FF]+/g, '-')
+        .replace(/(^-|-$)+/g, '');
+    
+    // Add a small random string to guarantee uniqueness in the database
+    const uniqueSlug = productData.slug ? baseSlug : `${baseSlug}-${Math.random().toString(36).substring(2, 6)}`;
 
    let finalProductDoc = {
         productType: productType,
@@ -41,6 +50,10 @@ const buildProductData = (productData, productType, imagePaths) => {
         category: productData.category,
         subcategory: productData.subcategory || '', 
         name: displayName,
+        
+        // NEW: Injected Slug Field
+        slug: uniqueSlug,
+
         price: displayPrice,
         price_egp: displayPrice,
         stock: productType === 'Bundle' ? 999 : productData.stock,
@@ -48,7 +61,6 @@ const buildProductData = (productData, productType, imagePaths) => {
         featured: productData.featured || false,
         costPrice: productData.costPrice !== undefined ? Number(productData.costPrice) : 0,
         
-        // ADD THESE THREE LINES:
         stockOnline: productData.stockOnline !== undefined ? Number(productData.stockOnline) : 0,
         stockSabeel: productData.stockSabeel !== undefined ? Number(productData.stockSabeel) : 0,
         stockCloudsTex: productData.stockCloudsTex !== undefined ? Number(productData.stockCloudsTex) : 0,
@@ -117,6 +129,7 @@ const buildProductData = (productData, productType, imagePaths) => {
 
     return finalProductDoc;
 };
+
 // --- BUNDLE STOCK CALCULATOR ---
 const calculateBundleStock = async (product) => {
     if (!product.bundleItems || product.bundleItems.length === 0) return 0;
@@ -159,11 +172,9 @@ const calculateBundleStock = async (product) => {
 
     return maxBundleStock === Infinity ? 0 : maxBundleStock;
 };
+
 // --- CONTROLLER FUNCTIONS ---
 
-/**
- * Endpoint: POST /api/products (Admin panel submission)
- */
 export const createProduct = async (req, res) => {
     try {
         if (!req.files || req.files.length === 0) {
@@ -197,32 +208,28 @@ export const createProduct = async (req, res) => {
     }
 };
 
-/**
- * Endpoint: GET /api/products (Frontend list & Admin list)
- */
 export const getAllProducts = async (req, res) => {
     try {
-        // ✅ FIX: Add 'sub' to destructuring
+        // NEW: Added 'inStock' parameter to the destructuring
         const { 
             page = 1, 
             limit = 12, 
             category, 
-            sub,           // ← ADD THIS
+            sub,
             productType, 
             sort, 
             order = 'asc', 
             search, 
             exclude_id, 
             isBestSeller, 
-            status 
+            status,
+            inStock // <-- NEW
         } = req.query;
 
-        // Default to Active for frontend, allow filtering by status for admin
         const query = status ? { status } : { status: 'Active' };
 
-        // ✅ FIX: Use destructured 'sub' variable
         if (category) query.category = category;
-        if (sub) query.subcategory = sub;  // ← USE 'sub' NOT 'req.query.sub'
+        if (sub) query.subcategory = sub;
         if (productType) query.productType = productType;
         
         if (search) {
@@ -236,6 +243,17 @@ export const getAllProducts = async (req, res) => {
         
         if (exclude_id) query._id = { $ne: exclude_id };
         if (isBestSeller === 'true') query.featured = true;
+
+        // NEW: Stock filtering logic for clean Best Sellers sections
+        if (inStock === 'true') {
+            query.$or = [
+                ...query.$or || [], // Preserve existing $or conditions if any
+                { stock: { $gt: 0 } },
+                { stockOnline: { $gt: 0 } },
+                { 'variants.stockOnline': { $gt: 0 } },
+                { 'variants.stock': { $gt: 0 } }
+            ];
+        }
 
         // Sort criteria
         const sortCriteria = {};
@@ -284,13 +302,10 @@ export const getAllProducts = async (req, res) => {
     }
 }; 
 
-/**
- * Endpoint: GET /api/products/:id (Frontend detail & Admin Edit)
- */
 export const getProductById = async (req, res) => {
     try {
         const product = await Product.findById(req.params.id)
-            .populate('pairedProduct', 'name_en imagePaths price_egp salePrice stock category');
+            .populate('pairedProduct', 'name_en bundleName imagePaths price_egp salePrice stock category slug');
 
         if (!product) {
             return res.status(404).json({ message: 'Product not found.' });
@@ -316,9 +331,6 @@ export const getProductById = async (req, res) => {
     }
 };
 
-/**
- * Endpoint: PUT /api/products/:id (Admin Edit submission)
- */
 export const updateProduct = async (req, res) => {
     try {
         const productId = req.params.id;
@@ -332,8 +344,13 @@ export const updateProduct = async (req, res) => {
             return res.status(400).json({ message: 'Product data (text fields) is missing for update.' });
         }
 
-        // Parse productData ONCE at the top
         const productData = JSON.parse(req.body.productData);
+        
+        // NEW: Ensure we keep the old slug if the user isn't trying to overwrite it
+        if (!productData.slug && product.slug) {
+            productData.slug = product.slug;
+        }
+
         const { productType } = productData;
 
         // Use kept images from frontend (after user deleted some)
@@ -391,9 +408,7 @@ export const updateProduct = async (req, res) => {
         });
     }
 };
-/**
- * Endpoint: DELETE /api/products/:id (Admin Delete action)
- */
+
 export const deleteProduct = async (req, res) => {
     try {
         const productId = req.params.id;
