@@ -1,6 +1,36 @@
 import mongoose from 'mongoose';
 
+// NEW: Highly flexible schema for building dynamic homepage sections
+const dynamicSectionSchema = new mongoose.Schema({
+  type: { 
+    type: String, 
+    enum: [
+      'trust', 'about', 'collections', 'bestsellers', 
+      'why_siraj', 'reviews', 'bundle_promo', 'scents', 
+      'instagram', 'final_cta', 'custom_text_image'
+    ], 
+    required: true 
+  },
+  isActive: { type: Boolean, default: true },
+  sortOrder: { type: Number, default: 0 },
+  headline: { type: String, default: '' },
+  subheadline: { type: String, default: '' },
+  bodyText: { type: String, default: '' },
+  imageUrl: { type: String, default: '' },
+  // Controls how the photo fits the section
+  imageAlignment: { type: String, enum: ['left', 'right', 'center', 'background', 'grid'], default: 'center' },
+  buttonText: { type: String, default: '' },
+  buttonLink: { type: String, default: '' },
+  backgroundColor: { type: String, default: 'transparent' } 
+}, { _id: true });
+
 const siteSettingsSchema = new mongoose.Schema({
+  // NEW: Dynamic Dashboard Favicon
+  faviconUrl: { type: String, default: '' },
+
+  // NEW: Dynamic Homepage Layout Engine
+  homepageSections: [dynamicSectionSchema],
+
   // Announcement ribbon
   ribbonEnabled: { type: Boolean, default: true },
   ribbonMessages: [{ type: String }],
