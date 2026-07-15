@@ -6,8 +6,8 @@ import {
     createProduct,
     getAllProducts,
     getProductById,
-    updateProduct, // <-- Import update function
-    deleteProduct  // <-- Import delete function
+    updateProduct, 
+    deleteProduct  
 } from '../controllers/ProductController.js';
 import Product from '../models/Product.js';
 import InventoryMovement from '../models/InventoryMovement.js';
@@ -38,8 +38,6 @@ const getProductPrice = product => {
   return Number(product.price_egp || product.price || 0);
 };
 
-// --- Define Routes ---
-// ── NEW: Get location stock for a product (including variants) ──
 router.get('/:id/location-stock', authenticateToken, async (req, res) => {
   try {
     const product = await Product.findById(req.params.id);
@@ -64,8 +62,6 @@ router.get('/:id/location-stock', authenticateToken, async (req, res) => {
   }
 });
 
-// ── NEW: Update location stock for a product (variant or simple) ──
-// ── Update location stock for a product (variant or simple) ──
 router.put('/:id/location-stock', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { variantName, online, sabeel, clouds_tex } = req.body;
@@ -73,16 +69,14 @@ router.put('/:id/location-stock', authenticateToken, requireAdmin, async (req, r
     if (!product) return res.status(404).json({ error: 'Product not found' });
 
     const productName = product.name_en || product.bundleName || product.name;
-    const movements    = []; // collect { location, before, after, costPrice } to record after save
+    const movements    = []; 
 
     if (variantName) {
-      // update variant
       const variant = product.variants.find(v => v.variantName === variantName);
       if (!variant) return res.status(404).json({ error: 'Variant not found' });
 
       const costPrice = variant.costPrice || product.costPrice || 0;
 
-      // Force conversion to Numbers, fallback to existing stock if undefined
       if (online !== undefined) {
         const before = variant.stockOnline || 0;
         const after  = Number(online) || 0;
@@ -102,10 +96,9 @@ router.put('/:id/location-stock', authenticateToken, requireAdmin, async (req, r
         variant.stockCloudsTex = after;
       }
 
-      variant.stock = variant.stockOnline; // sync legacy
+      variant.stock = variant.stockOnline; 
       product.stock = product.variants.reduce((sum, v) => sum + Number(v.stockOnline || 0), 0);
     } else {
-      // update simple product
       const costPrice = product.costPrice || 0;
 
       if (online !== undefined) {
@@ -127,12 +120,11 @@ router.put('/:id/location-stock', authenticateToken, requireAdmin, async (req, r
         product.stockCloudsTex = after;
       }
 
-      product.stock = product.stockOnline; // sync legacy
+      product.stock = product.stockOnline; 
     }
 
     await product.save();
 
-    // Record one movement per location field that actually changed
     for (const m of movements) {
       await InventoryMovement.record({
         productId:     product._id,
@@ -187,7 +179,8 @@ router.get('/catalog-feed.csv', async (req, res) => {
         availability,
         'new',
         `${price.toFixed(2)} EGP`,
-        `${SITE_URL}/product.html?id=${product._id}`,
+        // FIX: Now uses the SEO Slug instead of broken IDs for Media Buyer compatibility
+        `${SITE_URL}/product.html?slug=${product.slug || product._id}`,
         image,
         'Siraj Candles',
         'Home & Garden > Decor > Home Fragrances > Candles',
@@ -201,19 +194,11 @@ router.get('/catalog-feed.csv', async (req, res) => {
     res.status(500).json({ message: 'Could not generate catalog feed.' });
   }
 });
-// GET /api/products
+
 router.get('/', getAllProducts);
-
-// GET /api/products/:id
 router.get('/:id', getProductById);
-
-// POST /api/products
 router.post('/', authenticateToken, requireAdmin, upload.array('productImages', 5), createProduct);
-
-// PUT /api/products/:id - Update product
-router.put('/:id', authenticateToken, requireAdmin, upload.array('productImages', 5), updateProduct); // Allow images on update
-
-// DELETE /api/products/:id - Delete product
+router.put('/:id', authenticateToken, requireAdmin, upload.array('productImages', 5), updateProduct); 
 router.delete('/:id', authenticateToken, requireAdmin, deleteProduct);
 
 export default router;
