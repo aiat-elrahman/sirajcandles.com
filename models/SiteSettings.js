@@ -1,6 +1,5 @@
 import mongoose from 'mongoose';
 
-// NEW: Highly flexible schema for building dynamic homepage sections
 const dynamicSectionSchema = new mongoose.Schema({
   type: { 
     type: String, 
@@ -17,7 +16,6 @@ const dynamicSectionSchema = new mongoose.Schema({
   subheadline: { type: String, default: '' },
   bodyText: { type: String, default: '' },
   imageUrl: { type: String, default: '' },
-  // Controls how the photo fits the section
   imageAlignment: { type: String, enum: ['left', 'right', 'center', 'background', 'grid'], default: 'center' },
   buttonText: { type: String, default: '' },
   buttonLink: { type: String, default: '' },
@@ -25,16 +23,17 @@ const dynamicSectionSchema = new mongoose.Schema({
 }, { _id: true });
 
 const siteSettingsSchema = new mongoose.Schema({
-  // NEW: Dynamic Dashboard Favicon
   faviconUrl: { type: String, default: '' },
-
-  // NEW: Dynamic Homepage Layout Engine
   homepageSections: [dynamicSectionSchema],
+
+  // NEW: Tracking & Analytics IDs for the Media Buyer
+  metaPixelId: { type: String, default: '' },
+  googleAnalyticsId: { type: String, default: '' },
 
   // Announcement ribbon
   ribbonEnabled: { type: Boolean, default: true },
   ribbonMessages: [{ type: String }],
-  ribbonSpeed: { type: Number, default: 4000 }, // ms per message
+  ribbonSpeed: { type: Number, default: 4000 }, 
 
   // Nav link visibility
   navLinks: {
@@ -42,7 +41,7 @@ const siteSettingsSchema = new mongoose.Schema({
     products:  { type: Boolean, default: true },
     bundles:   { type: Boolean, default: true },
     trackOrder:{ type: Boolean, default: true },
-    stores:    { type: Boolean, default: false }, // hidden until you activate
+    stores:    { type: Boolean, default: false }, 
   },
 
   // Footer
@@ -53,8 +52,6 @@ const siteSettingsSchema = new mongoose.Schema({
   footerFacebook:  { type: String, default: 'https://www.facebook.com/people/sirajcandles/61576576972784/' },
   footerTiktok:    { type: String, default: 'https://www.tiktok.com/@sirajcandles' },
 
-  // WhatsApp order confirmation message template
-  // Supports placeholders: {{name}}, {{orderId}}, {{total}}, {{items}}, {{city}}
   whatsappOrderTemplate: {
     type: String,
     default: `هاي {{name}} 🤍
@@ -77,10 +74,8 @@ Total: {{total}} EGP
 ولو عندك أي سؤال إحنا موجودين في أي وقت.`,
   },
 
-  // WhatsApp business number (yours) — used to open the chat
   whatsappPhone: { type: String, default: '+201001775793' },
 
-  // NEW: Free gift progress bar
   freeGift: {
     enabled:  { type: Boolean, default: false },
     threshold: { type: Number, default: 500 },
