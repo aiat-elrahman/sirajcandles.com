@@ -15,7 +15,7 @@ const variantSchema = new mongoose.Schema({
   costPrice:    { type: Number, default: 0, min: 0 },
   stock:        { type: Number, default: 0, min: 0 },          // online stock (legacy)
   sku:          String,
-  // NEW: location stocks for this variant
+  // location stocks for this variant
   stockOnline:      { type: Number, default: 0 },
   stockSabeel:      { type: Number, default: 0 },
   stockCloudsTex:   { type: Number, default: 0 },
@@ -38,12 +38,15 @@ const productSchema = new mongoose.Schema(
     featured:     { type: Boolean, default: false },
     imagePaths:   [{ type: String }],
 
-    // NEW: sale price shown with strikethrough + SALE badge when < price_egp
+    // sale price shown with strikethrough + SALE badge when < price_egp
     salePrice:      { type: Number, default: 0, min: 0 },
-    // NEW: "pairs well with" product for the pairing popup
+    // "pairs well with" product for the pairing popup
     pairedProduct:  { type: mongoose.Schema.Types.ObjectId, ref: 'Product', default: null },
 
-    // NEW: location stocks for simple products (no variants)
+    // CRITICAL SEO UPGRADE: Short URL Slugs
+    slug: { type: String, unique: true, sparse: true, trim: true },
+
+    // location stocks for simple products (no variants)
     stockOnline:      { type: Number, default: 0 },
     stockSabeel:      { type: Number, default: 0 },
     stockCloudsTex:   { type: Number, default: 0 },
