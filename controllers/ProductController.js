@@ -436,3 +436,39 @@ export const deleteProduct = async (req, res) => {
         });
     }
 };
+
+/**
+ * Endpoint: POST /api/products/backfill-slugs (Admin — run once)
+ * Generates slugs for any existing products that don't have one yet.
+ * Uses the same random-suffix approach as buildProductData for consistency.
+ * Safe to run multiple times — already-slugged products are skipped.
+ */
+export const backfillSlugs = async (req, res) => {
+    try {
+        const products = await Product.find({ $or: [{ slug: { $exists: false } }, { slug: '' }, { slug: null }] });
+        let updated = 0;
+
+        for (const product of products) {
+            const displayName = product.name_en || product.bundleName || product.name || 'product';
+            const baseSlug = displayName
+                .toLowerCase()
+                .replace(/[^a-z0-9\u0600-\u06FF]+/g, '-')
+                .replace(/(^-|-$)+/g, '');
+
+            let candidate = `${baseSlug}-${Math.random().toString(36).substring(2, 6)}`;
+            // Extra safety net for bulk backfill, even though random collisions are astronomically unlikely
+            while (await Product.exists({ slug: candidate, _id: { $ne: product._id } })) {
+                candidate = `${baseSlug}-${Math.random().toString(36).substring(2, 6)}`;
+            }
+
+            product.slug = candidate;
+            await product.save();
+            updated++;
+        }
+
+        res.json({ success: true, updated, total: products.length });
+    } catch (error) {
+        console.error('Error backfilling slugs:', error);
+        res.status(500).json({ message: 'Failed to backfill slugs.', error: error.message });
+    }
+};
