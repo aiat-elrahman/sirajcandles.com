@@ -7,7 +7,8 @@ import {
     getAllProducts,
     getProductById,
     updateProduct, 
-    deleteProduct  
+    deleteProduct,
+    backfillSlugs
 } from '../controllers/ProductController.js';
 import Product from '../models/Product.js';
 import InventoryMovement from '../models/InventoryMovement.js';
@@ -196,6 +197,10 @@ router.get('/catalog-feed.csv', async (req, res) => {
 });
 
 router.get('/', getAllProducts);
+
+// One-time migration: run once after deploy to give pre-existing products a slug
+router.post('/backfill-slugs', authenticateToken, requireAdmin, backfillSlugs);
+
 router.get('/:id', getProductById);
 router.post('/', authenticateToken, requireAdmin, upload.array('productImages', 5), createProduct);
 router.put('/:id', authenticateToken, requireAdmin, upload.array('productImages', 5), updateProduct); 
