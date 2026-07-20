@@ -1,5 +1,15 @@
 import mongoose from 'mongoose';
 
+const dynamicSectionItemSchema = new mongoose.Schema({
+  icon:     { type: String, default: '' },  // emoji or short icon text, for trust/why_siraj items
+  label:    { type: String, default: '' },  // trust/why_siraj item label
+  imageUrl: { type: String, default: '' },  // instagram item image
+  link:     { type: String, default: '' },  // instagram item link (or any item's click-through)
+  quote:    { type: String, default: '' },  // review item text
+  author:   { type: String, default: '' },  // review item author name
+  rating:   { type: Number, default: 5 },   // review item star rating
+}, { _id: false });
+
 const dynamicSectionSchema = new mongoose.Schema({
   type: { 
     type: String, 
@@ -19,7 +29,9 @@ const dynamicSectionSchema = new mongoose.Schema({
   imageAlignment: { type: String, enum: ['left', 'right', 'center', 'background', 'grid'], default: 'center' },
   buttonText: { type: String, default: '' },
   buttonLink: { type: String, default: '' },
-  backgroundColor: { type: String, default: 'transparent' } 
+  backgroundColor: { type: String, default: 'transparent' },
+  // NEW: repeatable sub-items, used by trust/why_siraj (icons), instagram (images), reviews (quotes)
+  items: { type: [dynamicSectionItemSchema], default: [] },
 }, { _id: true });
 
 const siteSettingsSchema = new mongoose.Schema({
@@ -51,6 +63,17 @@ const siteSettingsSchema = new mongoose.Schema({
   footerInstagram: { type: String, default: 'https://www.instagram.com/siraj_candles_eg' },
   footerFacebook:  { type: String, default: 'https://www.facebook.com/people/sirajcandles/61576576972784/' },
   footerTiktok:    { type: String, default: 'https://www.tiktok.com/@sirajcandles' },
+
+  // NEW: Footer policy/info links (Terms & Conditions, Shipping, Returns, FAQ, etc.)
+  footerLinks: {
+    type: [{ label: { type: String, default: '' }, url: { type: String, default: '' } }],
+    default: [
+      { label: 'FAQ', url: '/faq.html' },
+      { label: 'Shipping & Delivery', url: '/shipping.html' },
+      { label: 'Returns & Refunds', url: '/returns.html' },
+      { label: 'Terms & Conditions', url: '/terms.html' },
+    ],
+  },
 
   whatsappOrderTemplate: {
     type: String,
