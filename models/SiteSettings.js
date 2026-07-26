@@ -1,13 +1,14 @@
 import mongoose from 'mongoose';
 
 const dynamicSectionItemSchema = new mongoose.Schema({
-  icon:     { type: String, default: '' },  // emoji or short icon text, for trust/why_siraj items
-  label:    { type: String, default: '' },  // trust/why_siraj item label
-  imageUrl: { type: String, default: '' },  // instagram item image
-  link:     { type: String, default: '' },  // instagram item link (or any item's click-through)
-  quote:    { type: String, default: '' },  // review item text
-  author:   { type: String, default: '' },  // review item author name
-  rating:   { type: Number, default: 5 },   // review item star rating
+  icon:      { type: String, default: '' },  // emoji or short icon text, for trust/why_siraj items
+  label:     { type: String, default: '' },  // trust/why_siraj item label
+  imageUrl:  { type: String, default: '' },  // instagram item image / trust item uploaded icon
+  link:      { type: String, default: '' },  // instagram item link (or any item's click-through)
+  quote:     { type: String, default: '' },  // review item text
+  author:    { type: String, default: '' },  // review item author name
+  rating:    { type: Number, default: 5 },   // review item star rating
+  productId: { type: mongoose.Schema.Types.ObjectId, ref: 'Product', default: null }, // hand-picked bestseller
 }, { _id: false });
 
 const dynamicSectionSchema = new mongoose.Schema({
