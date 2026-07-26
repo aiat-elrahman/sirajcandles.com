@@ -223,8 +223,23 @@ export const getAllProducts = async (req, res) => {
             exclude_id, 
             isBestSeller, 
             status,
-            inStock // <-- NEW
+            inStock, // <-- NEW
+            ids // <-- NEW: comma-separated product IDs for manually-curated sections
         } = req.query;
+
+        // Manual override: return exactly these products, in the order given
+        if (ids) {
+            const idList = ids.split(',').map(s => s.trim()).filter(Boolean);
+            const products = await Product.find({ _id: { $in: idList }, status: 'Active' });
+            const byId = Object.fromEntries(products.map(p => [p._id.toString(), p]));
+            const ordered = idList.map(id => byId[id]).filter(Boolean);
+            return res.json({
+                total: ordered.length,
+                page: 1,
+                limit: ordered.length,
+                results: ordered
+            });
+        }
 
         const query = status ? { status } : { status: 'Active' };
 
