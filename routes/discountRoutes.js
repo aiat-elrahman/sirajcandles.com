@@ -11,6 +11,7 @@ const discountSchema = new mongoose.Schema({
     value:             { type: Number, default: 0 },
     appliesTo:         { type: String, enum: ['entire', 'categories'], default: 'entire' },
     categories:        [{ type: String }],
+    subcategories:     [{ type: String }], // NEW
     minOrderValue:     { type: Number, default: 0 },
     maxUses:           { type: Number, default: null },
     usedCount:         { type: Number, default: 0 },
@@ -26,6 +27,7 @@ const discountSchema = new mongoose.Schema({
     getQuantity:       { type: Number, default: 1 },
     getDiscountPct:    { type: Number, default: 100 },
     buyxgetyCategory:  { type: String, default: '' },
+    buyxgetySubcategory: { type: String, default: '' }, // NEW
 }, { timestamps: true });
 
 const Discount = mongoose.models.Discount || mongoose.model('Discount', discountSchema);
@@ -93,8 +95,13 @@ function calculateDiscount(discount, cartTotal, cartItems) {
 
     if (discount.type === 'buyxgety') {
     const cat = discount.buyxgetyCategory;
+    const subcat = discount.buyxgetySubcategory;
     const qualifying = cartItems
-        .filter(i => cat === 'all' || (i.category||'').toLowerCase() === cat.toLowerCase())
+        .filter(i => {
+            if (cat !== 'all' && (i.category||'').toLowerCase() !== cat.toLowerCase()) return false;
+            if (subcat && (i.subcategory||'').toLowerCase() !== subcat.toLowerCase()) return false;
+            return true;
+        })
         .flatMap(i => Array(i.quantity).fill(i.price))
         .sort((a, b) => a - b); // cheapest first
 
@@ -128,11 +135,17 @@ function calculateDiscount(discount, cartTotal, cartItems) {
     let applicableTotal = cartTotal;
     if (discount.appliesTo === 'categories' && discount.categories.length > 0) {
         applicableTotal = cartItems.reduce((sum, item) => {
-            const match = discount.categories.some(c => c.toLowerCase() === (item.category||'').toLowerCase());
+            const catMatch = discount.categories.some(c => c.toLowerCase() === (item.category||'').toLowerCase());
+            const subcatMatch = !discount.subcategories?.length ||
+                discount.subcategories.some(s => s.toLowerCase() === (item.subcategory||'').toLowerCase());
+            const match = catMatch && subcatMatch;
             return match ? sum + (item.price * item.quantity) : sum;
         }, 0);
         if (applicableTotal === 0) {
-            return { valid: false, message: `This code only applies to: ${discount.categories.join(', ')}. None of your cart items qualify.` };
+            const scopeMsg = discount.subcategories?.length
+                ? `${discount.categories.join(', ')} → ${discount.subcategories.join(', ')}`
+                : discount.categories.join(', ');
+            return { valid: false, message: `This code only applies to: ${scopeMsg}. None of your cart items qualify.` };
         }
     }
 
@@ -196,7 +209,9 @@ router.post('/validate', async (req, res) => {
                 value: discount.value,
                 appliesTo: discount.appliesTo,
                 categories: discount.categories,
+                subcategories: discount.subcategories,
                 buyxgetyCategory: discount.buyxgetyCategory,
+                buyxgetySubcategory: discount.buyxgetySubcategory,
                 isFreeShipping: result.freeShipping,
                 isStackable: discount.isStackable,
                 stackCap: discount.stackCap,
@@ -241,7 +256,9 @@ router.post('/apply-automatic', async (req, res) => {
                 value: discount.value,
                 appliesTo: discount.appliesTo,
                 categories: discount.categories,
+                subcategories: discount.subcategories,
                 buyxgetyCategory: discount.buyxgetyCategory,
+                buyxgetySubcategory: discount.buyxgetySubcategory,
                 isFreeShipping: result.freeShipping,
                 isStackable: discount.isStackable,
                 stackCap: discount.stackCap,
