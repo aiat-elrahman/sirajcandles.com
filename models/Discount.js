@@ -16,6 +16,7 @@ const discountSchema = new mongoose.Schema({
     value:          { type: Number, default: 0, min: 0 },
     appliesTo:      { type: String, default: 'entire', enum: ['entire', 'categories'] },
     categories:     [{ type: String }],
+    subcategories:  [{ type: String }], // NEW: optional narrowing within `categories` — e.g. "Body Splash" inside "Self Care"
     minOrderValue:  { type: Number, default: 0 },
     maxUses:        { type: Number, default: null },
     usedCount:      { type: Number, default: 0 },
@@ -28,6 +29,7 @@ const discountSchema = new mongoose.Schema({
     getQuantity:      { type: Number, default: 1 },
     getDiscountPct:   { type: Number, default: 100 },
     buyxgetyCategory: { type: String, default: '' },
+    buyxgetySubcategory: { type: String, default: '' }, // NEW: optional narrowing, same idea for Buy X Get Y
 }, { timestamps: true });
 
 discountSchema.index({ status: 1 });
