@@ -77,6 +77,13 @@ router.put('/', authenticateToken, requireAdmin, async (req, res) => {
         .filter(Boolean);
     }
 
+    if (Array.isArray(incoming.homepageSections)) {
+      incoming.homepageSections = incoming.homepageSections
+        .map((section, index) => ({ ...section, sortOrder: Number.isFinite(Number(section.sortOrder)) ? Number(section.sortOrder) : index }))
+        .sort((first, second) => first.sortOrder - second.sortOrder)
+        .map((section, index) => ({ ...section, sortOrder: index }));
+    }
+
     Object.assign(settings, incoming);
     if (incoming.freeGift) {
       settings.freeGift = { ...settings.freeGift, ...incoming.freeGift };
