@@ -46,7 +46,13 @@ router.get('/automatic', async (req, res) => {
         const discounts = await Discount.find({
             isAutomatic: true,
             status: 'active',
-            $or: [{ expiresAt: null }, { expiresAt: { $gt: now } }]
+            $and: [
+                { $or: [{ expiresAt: null }, { expiresAt: { $gt: now } }] },
+                { $expr: { $or: [
+                    { $eq: ['$maxUses', null] },
+                    { $lt: ['$usedCount', '$maxUses'] }
+                ] } }
+            ]
         });
         res.json(discounts);
     } catch (err) { res.status(500).json({ message: err.message }); }
