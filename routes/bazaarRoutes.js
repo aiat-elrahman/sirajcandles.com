@@ -165,7 +165,8 @@ router.get('/', authenticateToken, async (req, res) => {
     if (req.query.eventId) query.eventId = req.query.eventId;
     if (req.query.day)     query.bazaarDay = req.query.day;
     if (req.query.status)  query.status = req.query.status;
-    // Employees only see their own store's sales
+    if (isAdminUser(req.user) && req.query.location) query.location = req.query.location;
+    // Employees can only ever see their own store's sales.
     if (!isAdminUser(req.user)) query.location = req.user.store;
 
     const sales = await Bazaarsale.find(query).sort({ createdAt: -1 });
@@ -178,7 +179,9 @@ router.get('/', authenticateToken, async (req, res) => {
 // ── GET unique events list ────────────────────────────────────────────────────
 router.get('/events', authenticateToken, requireAdmin, async (req, res) => {
   try {
+    const match = req.query.location ? { location: req.query.location } : {};
     const events = await Bazaarsale.aggregate([
+      { $match: match },
       {
         $group: {
           _id:           '$eventId',
