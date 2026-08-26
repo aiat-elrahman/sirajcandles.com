@@ -2,6 +2,7 @@ import Order from "../models/Order.js";
 import Product from "../models/Product.js";
 import Discount from "../models/Discount.js";
 import nodemailer from "nodemailer";
+import { sendPushToAll } from "../routes/pushRoutes.js";
 
 // ── Notification helpers ──────────────────────────────────────────────────────
 
@@ -130,34 +131,38 @@ export const createOrder = async (req, res) => {
             }
 
             let priceToUse = product.price_egp;
-            let variantFound = false;
+            const hasVariants = product.variants && product.variants.length > 0;
 
-            // --- Variant Logic ---
-            if (item.variantName) {
+            if (hasVariants) {
+                // A varianted product MUST resolve to a real variant — no fallback to the
+                // parent's own stock field, which isn't kept live for variant products and
+                // is exactly what let sold-out variants (e.g. fresheners) still get purchased.
                 const variant = product.variants.find(v => v.variantName === item.variantName);
-                if (variant) {
-                    // Use stockOnline for online orders (fallback to stock if not set)
-                    const stockAvailable = variant.stockOnline !== undefined ? variant.stockOnline : variant.stock;
-                    if (stockAvailable < item.quantity) {
-                        throw new Error(`Insufficient stock for ${product.name} (${item.variantName}).`);
-                    }
-                    // Deduct from stockOnline (or stock if stockOnline not set)
-                    if (variant.stockOnline !== undefined) {
-                        variant.stockOnline -= item.quantity;
-                    } else {
-                        variant.stock -= item.quantity;
-                    }
-                    // Keep legacy stock synced for backward compatibility
-                    variant.stock = variant.stockOnline !== undefined ? variant.stockOnline : variant.stock;
-                    priceToUse = variant.price;
-                    variantFound = true;
-                    // Also sync main stock so listing page reflects reality
-                    product.stock = product.variants.reduce((sum, v) => sum + (v.stockOnline !== undefined ? v.stockOnline : v.stock), 0);
+                if (!variant) {
+                    console.error(`Order failed: No matching variant "${item.variantName}" for ${product.name}`);
+                    return res.status(400).json({ message: `Please select a valid option for ${product.name} and try again.` });
                 }
-            }
 
-            // --- Main Stock Logic (no variant) ---
-            if (!variantFound) {
+                const stockAvailable = variant.stockOnline !== undefined ? variant.stockOnline : variant.stock;
+                if (stockAvailable < item.quantity) {
+                    console.error(`Order failed: Insufficient stock for ${product.name} (${item.variantName})`);
+                    return res.status(400).json({ message: `Insufficient stock for ${product.name} (${item.variantName}).` });
+                }
+
+                // Deduct from stockOnline (or stock if stockOnline not set)
+                if (variant.stockOnline !== undefined) {
+                    variant.stockOnline -= item.quantity;
+                } else {
+                    variant.stock -= item.quantity;
+                }
+                // Keep legacy stock synced for backward compatibility
+                variant.stock = variant.stockOnline !== undefined ? variant.stockOnline : variant.stock;
+                priceToUse = variant.price;
+                // Also sync main stock so listing page reflects reality
+                product.stock = product.variants.reduce((sum, v) => sum + (v.stockOnline !== undefined ? v.stockOnline : v.stock), 0);
+
+            } else {
+                // --- Simple product, no variants ---
                 const stockAvailable = product.stockOnline !== undefined ? product.stockOnline : product.stock;
                 if (stockAvailable < item.quantity) {
                     console.error(`Order failed: Insufficient stock for product ${product.name}`);
@@ -256,6 +261,11 @@ export const createOrder = async (req, res) => {
         // Fire notifications — non-blocking, never delay the customer response
         sendTelegramNotification(createdOrder).catch(e => console.error('Telegram error:', e));
         sendEmailNotification(createdOrder).catch(e => console.error('Email error:', e));
+        sendPushToAll({
+            title: 'New Order! 🎉',
+            body: `${createdOrder.customerInfo?.name || 'Someone'} — ${createdOrder.totalAmount.toFixed(2)} EGP`,
+            url: '/admin-upload'
+        }).catch(e => console.error('Push notification error:', e));
 
         res.status(201).json({ message: "Order created successfully", orderId: createdOrder._id });
 
