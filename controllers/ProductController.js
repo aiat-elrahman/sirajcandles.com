@@ -134,11 +134,24 @@ const buildProductData = (productData, productType, imagePaths) => {
 const calculateBundleStock = async (product) => {
     if (!product.bundleItems || product.bundleItems.length === 0) return 0;
 
-    // Count how many of each linked product are required for ONE bundle
+    // linkedProductId may be a raw ObjectId OR a populated document (getProductById
+    // populates it for the scent picker) — normalize to a plain ID string either way.
+    const getLinkedId = (linkedProductId) => {
+        if (!linkedProductId) return null;
+        return (linkedProductId._id || linkedProductId).toString();
+    };
+
+    // Count how many of each linked product are required for ONE bundle,
+    // keeping a reference to the populated doc if we already have one.
     const reqCounts = {};
+    const populatedDocs = {};
     product.bundleItems.forEach(item => {
-        if (item.linkedProductId) {
-            reqCounts[item.linkedProductId.toString()] = (reqCounts[item.linkedProductId.toString()] || 0) + 1;
+        const linkedId = getLinkedId(item.linkedProductId);
+        if (linkedId) {
+            reqCounts[linkedId] = (reqCounts[linkedId] || 0) + 1;
+            if (item.linkedProductId && item.linkedProductId._id) {
+                populatedDocs[linkedId] = item.linkedProductId; // already have the full doc
+            }
         }
     });
 
@@ -150,7 +163,7 @@ const calculateBundleStock = async (product) => {
     // Check the live database stock for each required item
     for (const [linkedId, neededQty] of Object.entries(reqCounts)) {
         try {
-            const linkedProduct = await Product.findById(linkedId);
+            const linkedProduct = populatedDocs[linkedId] || await Product.findById(linkedId);
             if (linkedProduct) {
                 // Find total available online stock across all variants or base stock
                 const available = linkedProduct.variants && linkedProduct.variants.length > 0 
