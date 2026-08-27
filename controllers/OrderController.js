@@ -185,35 +185,52 @@ export const createOrder = async (req, res) => {
                     if (bItem.linkedProductId) {
                         const linkedProd = await Product.findById(bItem.linkedProductId);
                         if (linkedProd) {
+                            const linkedHasVariants = linkedProd.variants && linkedProd.variants.length > 0;
                             let linkedVariantDeducted = false;
-                            if (item.customization && item.customization.length > 0) {
-                                for (const custString of item.customization) {
-                                    for (const v of linkedProd.variants) {
-                                        if (custString.includes(v.variantName)) {
-                                            const linkedStock = v.stockOnline !== undefined ? v.stockOnline : v.stock;
-                                            if (linkedStock >= item.quantity) {
-                                                if (v.stockOnline !== undefined) v.stockOnline -= item.quantity;
-                                                else v.stock -= item.quantity;
-                                                if (v.stockOnline !== undefined) v.stock = v.stockOnline;
-                                                linkedVariantDeducted = true;
-                                                break;
-                                            }
-                                        }
+
+                            if (linkedHasVariants) {
+                                // A varianted linked product MUST resolve to a real variant —
+                                // same rule as the main stock check. No fallback to the parent's
+                                // own stock field, which isn't kept live for variant products.
+                                let matchedVariant = null;
+                                if (item.customization && item.customization.length > 0) {
+                                    for (const custString of item.customization) {
+                                        matchedVariant = linkedProd.variants.find(v => custString.includes(v.variantName));
+                                        if (matchedVariant) break;
                                     }
-                                    if (linkedVariantDeducted) break;
                                 }
-                            }
-                            if (!linkedVariantDeducted) {
+
+                                if (!matchedVariant) {
+                                    console.error(`Order failed: No matching scent/variant selected for bundle item ${bItem.subProductName}`);
+                                    return res.status(400).json({ message: `Please select a valid option for ${bItem.subProductName} and try again.` });
+                                }
+
+                                const linkedStock = matchedVariant.stockOnline !== undefined ? matchedVariant.stockOnline : matchedVariant.stock;
+                                if (linkedStock < item.quantity) {
+                                    console.error(`Order failed: Insufficient stock for bundle item ${bItem.subProductName} (${matchedVariant.variantName})`);
+                                    return res.status(400).json({ message: `Insufficient stock for ${bItem.subProductName} (${matchedVariant.variantName}).` });
+                                }
+
+                                if (matchedVariant.stockOnline !== undefined) matchedVariant.stockOnline -= item.quantity;
+                                else matchedVariant.stock -= item.quantity;
+                                matchedVariant.stock = matchedVariant.stockOnline !== undefined ? matchedVariant.stockOnline : matchedVariant.stock;
+                                linkedProd.stock = linkedProd.variants.reduce((sum, v) => sum + (v.stockOnline !== undefined ? v.stockOnline : v.stock), 0);
+                                linkedVariantDeducted = true;
+
+                            } else {
+                                // --- Linked product has no variants — check its own stock directly ---
                                 const linkedStock = linkedProd.stockOnline !== undefined ? linkedProd.stockOnline : linkedProd.stock;
-                                if (linkedStock >= item.quantity) {
-                                    if (linkedProd.stockOnline !== undefined) linkedProd.stockOnline -= item.quantity;
-                                    else linkedProd.stock -= item.quantity;
-                                    linkedProd.stock = linkedProd.stockOnline !== undefined ? linkedProd.stockOnline : linkedProd.stock;
-                                } else {
-                                    throw new Error(`Insufficient stock for bundle item ${bItem.subProductName}`);
+                                if (linkedStock < item.quantity) {
+                                    console.error(`Order failed: Insufficient stock for bundle item ${bItem.subProductName}`);
+                                    return res.status(400).json({ message: `Insufficient stock for bundle item ${bItem.subProductName}.` });
                                 }
+                                if (linkedProd.stockOnline !== undefined) linkedProd.stockOnline -= item.quantity;
+                                else linkedProd.stock -= item.quantity;
+                                linkedProd.stock = linkedProd.stockOnline !== undefined ? linkedProd.stockOnline : linkedProd.stock;
+                                linkedVariantDeducted = true;
                             }
-                            await linkedProd.save();
+
+                            if (linkedVariantDeducted) await linkedProd.save();
                         }
                     }
                 }
