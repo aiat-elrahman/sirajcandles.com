@@ -325,10 +325,12 @@ export const getProductById = async (req, res) => {
         // Check if the parameter is a valid MongoDB ObjectId or a text slug
         if (idOrSlug.match(/^[0-9a-fA-F]{24}$/)) {
             product = await Product.findById(idOrSlug)
-                .populate('pairedProduct', 'name_en bundleName imagePaths price_egp salePrice stock category slug');
+                .populate('pairedProduct', 'name_en bundleName imagePaths price_egp salePrice stock category slug')
+                .populate('bundleItems.linkedProductId', 'name_en variants stock stockOnline');
         } else {
             product = await Product.findOne({ slug: idOrSlug })
-                .populate('pairedProduct', 'name_en bundleName imagePaths price_egp salePrice stock category slug');
+                .populate('pairedProduct', 'name_en bundleName imagePaths price_egp salePrice stock category slug')
+                .populate('bundleItems.linkedProductId', 'name_en variants stock stockOnline');
         }
 
         if (!product) {
