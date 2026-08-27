@@ -51,23 +51,22 @@ const mergeSaleItems = (items) => {
 // Deduct stock for one item. Throws if insufficient.
 const deductStock = async (product, variantName, stockField, quantity, session, movementCtx = {}) => {
   let stockBefore;
-  if (variantName) {
+  const hasVariants = product.variants && product.variants.length > 0;
+
+  if (hasVariants) {
+    // A varianted product MUST resolve to a real variant — no fallback to the parent's
+    // own stock field, which isn't kept live per-location for variant products.
     const variant = product.variants?.find(v => v.variantName === variantName);
-    if (variant) {
-      stockBefore = variant[stockField] || 0;
-      if (stockBefore < quantity)
-        throw new Error(`Not enough stock for ${product.name_en || product.name} (${variantName}). Available: ${stockBefore}`);
-      variant[stockField] -= quantity;
-      if (stockField === 'stockOnline') {
-        variant.stock = variant.stockOnline;
-        syncLegacyOnlineStock(product);
-      }
-    } else {
-      stockBefore = product[stockField] || 0;
-      if (stockBefore < quantity)
-        throw new Error(`Not enough stock for ${product.name_en || product.name}. Available: ${stockBefore}`);
-      product[stockField] -= quantity;
-      if (stockField === 'stockOnline') syncLegacyOnlineStock(product);
+    if (!variant) {
+      throw new Error(`No matching variant "${variantName || '(none selected)'}" for ${product.name_en || product.name}. Please select a valid option.`);
+    }
+    stockBefore = variant[stockField] || 0;
+    if (stockBefore < quantity)
+      throw new Error(`Not enough stock for ${product.name_en || product.name} (${variantName}). Available: ${stockBefore}`);
+    variant[stockField] -= quantity;
+    if (stockField === 'stockOnline') {
+      variant.stock = variant.stockOnline;
+      syncLegacyOnlineStock(product);
     }
   } else {
     stockBefore = product[stockField] || 0;
@@ -115,6 +114,9 @@ const restoreStock = async (product, variantName, stockField, quantity, session,
         syncLegacyOnlineStock(product);
       }
     } else {
+      // Variant no longer exists (renamed/deleted since the original sale) — restore to the
+      // parent as a best effort, but log it clearly so it doesn't silently corrupt counts.
+      console.warn(`[restoreStock] No matching variant "${variantName}" for ${product.name_en || product.name} — crediting parent stock instead.`);
       stockBefore = product[stockField] || 0;
       product[stockField] = stockBefore + quantity;
       if (stockField === 'stockOnline') syncLegacyOnlineStock(product);
