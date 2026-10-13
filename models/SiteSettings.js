@@ -43,6 +43,26 @@ const siteSettingsSchema = new mongoose.Schema({
   metaPixelId: { type: String, default: '' },
   googleAnalyticsId: { type: String, default: '' },
 
+  // Meta Conversions API (server-side events). The token is a SECRET: select:false means
+  // it is never returned by any normal query, so it can't leak through the public settings
+  // endpoint. Only code that explicitly asks for '+metaCapiToken' can read it.
+  metaCapiToken:     { type: String, default: '', select: false },
+  metaTestEventCode: { type: String, default: '' },     // from Events Manager > Test Events; empty = live events
+  metaApiVersion:    { type: String, default: 'v23.0' }, // Graph API version, editable when Meta retires one
+
+  // Checkout payment: deposit first, balance after the shipping-label photo. All admin-editable.
+  payment: {
+    depositEnabled:     { type: Boolean, default: true },
+    instapayNumber:     { type: String, default: '' },   // where customers send the deposit
+    instapayAccountName:{ type: String, default: '' },
+    depositType:        { type: String, enum: ['percent', 'fixed'], default: 'percent' },
+    depositValue:       { type: Number, default: 50 },   // % of the order total, or a fixed EGP amount
+    policyHeading:      { type: String, default: 'How payment works' },
+    policyText:         { type: String, default: '' },   // shown before the Place Order button
+    acknowledgeLabel:   { type: String, default: 'I have read and agree to the payment and shipping terms' },
+    successMessage:     { type: String, default: '' },   // shown on the order-confirmed screen
+  },
+
   // Announcement ribbon
   ribbonEnabled: { type: Boolean, default: true },
   ribbonMessages: [{ type: String }],
@@ -69,10 +89,10 @@ const siteSettingsSchema = new mongoose.Schema({
   footerLinks: {
     type: [{ label: { type: String, default: '' }, url: { type: String, default: '' } }],
     default: [
-      { label: 'FAQ', url: '/faq.html' },
-      { label: 'Shipping & Delivery', url: '/shipping.html' },
-      { label: 'Returns & Refunds', url: '/returns.html' },
-      { label: 'Terms & Conditions', url: '/terms.html' },
+      { label: 'FAQ', url: '/page.html?slug=faq' },
+      { label: 'Shipping & Delivery', url: '/page.html?slug=shipping' },
+      { label: 'Returns & Refunds', url: '/page.html?slug=returns' },
+      { label: 'Terms & Conditions', url: '/page.html?slug=terms' },
     ],
   },
 
@@ -87,8 +107,8 @@ Total: {{total}} EGP
 
 لتأكيد الاوردر برجاء تحويل ديبوزت علي رقم
 الـ Instapay:
-[+201001775793]
-بإسم مروه احمد
+{{instapayNumber}}
+بإسم {{instapayName}}
 ابعتلنا سكرين شوت أو تأكيد التحويل هنا على الواتساب 😊
 
 الشحن هيبقي عن طريق البريد المصري.
@@ -98,7 +118,7 @@ Total: {{total}} EGP
 ولو عندك أي سؤال إحنا موجودين في أي وقت.`,
   },
 
-  whatsappPhone: { type: String, default: '+201001775793' },
+  whatsappPhone: { type: String, default: '' },
 
   freeGift: {
     enabled:  { type: Boolean, default: false },
