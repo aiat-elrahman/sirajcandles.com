@@ -28,6 +28,8 @@ import employeeRoutes from './routes/employeeRoutes.js';
 import inventoryRoutes from './routes/inventoryRoutes.js';
 import trackingRoutes from './routes/trackingRoutes.js';
 import pushRoutes from './routes/pushRoutes.js'; // rebuilt — see routes/pushRoutes.js
+import pageRoutes from './routes/pageRoutes.js'; // FAQ/Shipping/Returns/Terms/Privacy — built but was never mounted
+import landingRoutes from './routes/landingRoutes.js'; // campaign landing pages
 import { requireAdmin } from './middleware/authMiddleware.js';
 dotenv.config();
 
@@ -136,6 +138,8 @@ app.use('/api/employees', employeeRoutes);
 app.use('/api/inventory', inventoryRoutes);
 app.use('/api/tracking', trackingRoutes);
 app.use('/api/push',     pushRoutes);
+app.use('/api/pages',    pageRoutes);
+app.use('/api/landing',  landingRoutes);
 // ============================================
 // HEALTH CHECK
 // ============================================
