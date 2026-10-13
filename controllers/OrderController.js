@@ -3,6 +3,8 @@ import Product from "../models/Product.js";
 import Discount from "../models/Discount.js";
 import nodemailer from "nodemailer";
 import { sendPushToAll } from "../routes/pushRoutes.js";
+import SiteSettings from "../models/SiteSettings.js";
+import { sendMetaPurchase } from "../services/metaConversions.js";
 
 // ── Notification helpers ──────────────────────────────────────────────────────
 
@@ -23,7 +25,7 @@ const buildOrderSummary = (order) => {
     shipping:      shippingFee?.toFixed(2)    || '0.00',
     discount:      discountAmount?.toFixed(2) || '0.00',
     discountCode:  discountCode || null,
-    payment:       paymentMethod || 'COD',
+    payment:       paymentMethod || 'Online',
     orderId:       order._id?.toString().slice(-8).toUpperCase(),
   };
 };
@@ -113,7 +115,17 @@ const sendEmailNotification = async (order) => {
 export const createOrder = async (req, res) => {
     try {
         console.log("--- INCOMING ORDER REQUEST ---", req.body);
-        const { customerInfo, items, paymentMethod, discountCode, discountAmount, shippingFee } = req.body;
+        const { customerInfo, items, discountCode, discountAmount, shippingFee } = req.body;
+        // Cash on delivery has been removed: every order is paid by deposit + balance (InstaPay).
+        // Whatever an old cached page sends, it is recorded as an online (transfer) payment.
+        let paymentMethod = 'Online';
+        // If the Order model restricts paymentMethod to a fixed list that lacks 'Online', pick the
+        // closest allowed value instead of rejecting the customer's order, and say so in the log.
+        const pmEnum = Order.schema.path('paymentMethod')?.enumValues;
+        if (pmEnum && pmEnum.length && !pmEnum.includes(paymentMethod)) {
+            paymentMethod = pmEnum.find(v => /online|instapay|transfer|wallet|deposit/i.test(v)) || pmEnum[0];
+            console.warn(`Order model does not allow paymentMethod "Online"; using "${paymentMethod}". Add "Online" to the Order schema enum.`);
+        }
 
         if (!items || items.length === 0) {
             console.error("Order failed: No items provided");
@@ -284,7 +296,25 @@ export const createOrder = async (req, res) => {
             url: '/admin-upload'
         }).catch(e => console.error('Push notification error:', e));
 
-        res.status(201).json({ message: "Order created successfully", orderId: createdOrder._id });
+        // Server-side Meta Purchase (deduplicated with the browser pixel by event id = order id).
+        // Fire-and-forget: it can never delay or fail the customer's order.
+        sendMetaPurchase({ req, order: createdOrder, tracking: req.body.tracking || {} })
+            .catch(e => console.error('Meta CAPI error:', e));
+
+        // Work out the deposit from the admin-editable rule so the customer sees the same
+        // number the shop owner will ask for. Never fails the order if settings can't be read.
+        let deposit = null;
+        try {
+            const st = await SiteSettings.findOne().sort({ updatedAt: -1 }).select('payment');
+            const p = st?.payment;
+            if (p && p.depositEnabled) {
+                const raw = p.depositType === 'fixed' ? Number(p.depositValue) : (totalAmount * Number(p.depositValue)) / 100;
+                const amount = Math.min(totalAmount, Math.max(0, Math.ceil(raw || 0)));
+                deposit = { amount, balance: totalAmount - amount };
+            }
+        } catch (e) { console.error('Deposit calc failed:', e.message); }
+
+        res.status(201).json({ message: "Order created successfully", orderId: createdOrder._id, deposit });
 
     } catch (error) {
         console.error("❌ CRITICAL ORDER ERROR:", error);
